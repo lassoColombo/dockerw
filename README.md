@@ -2,17 +2,19 @@
 
 **Structured, typed, read-only Docker introspection for Nushell.**
 
-`nu-docker-shim` overrides the default docker introspection commands with its own implementation.  
-You keep typing `docker ps`, but you get back Nushell values instead of text.  
+> `nu-docker-shim` can override the default docker introspection commands with its own implementation.  
+> You keep typing `docker ps`, but you get back Nushell values instead of text.  
 
----
+> In alternative, it can be used as a standalone module alongside the docker command:
+> you type `docker-shim ps` or whatever short alias you like and you get structured data. 
 
 - [nu-docker-shim](#nu-docker-shim)
   - [Why?](#why?)
+  - [What nu-docker-shim is — and what it isn't](#what-nu-docker-shim-is-—-and-what-it-isn't)
   - [How the shadowing works](#how-the-shadowing-works)
   - [Installation](#installation)
     - [Requirements](#requirements)
-  - [Differences from docekr commands](#differences-from-docekr-commands)
+  - [Differences from docker commands](#differences-from-docker-commands)
     - [Output modes](#output-modes)
     - [Filtering](#filtering)
   - [Commands](#commands)
@@ -36,6 +38,8 @@ You keep typing `docker ps`, but you get back Nushell values instead of text.
     - [`docker volume ls`](#`docker-volume-ls`)
   - [Recipes](#recipes)
 
+---
+
 ## Why?
 
 Answering these with the `docker` CLI means wrestling with `--format` templates and `grep`:
@@ -57,6 +61,22 @@ docker images --dangling | get size | math sum
 docker ps -o wide | where ($it.ports.host_port | any {|p| $p == 5432}) | get name
 
 ```
+
+## What nu-docker-shim is — and what it isn't
+
+**nu-docker-shim is:**
+
+- A module that give you structured, typed output for most of the docker introspection commands 
+- A module that expeses docker's flags in a more nushell idiomatic syntax.
+- Return either a shaped view (`-o compact|wide`) **or** the raw API response (`-o full`).
+
+**It is not:**
+
+- **It's not a docker replacement.** Only the introspection subset above is shadowed. `run`, `build`,
+  `exec`, `logs`, `events`, `pull`/`push`, `compose`, … are **not** — they fall through to real docker.
+- **It is local, unauthenticated daemon only.** No remote `tcp://`/TLS, no `ssh://` contexts. A
+  non-`unix://` `$env.DOCKER_HOST` is a **hard error**.
+- **No native Windows** — Docker Desktop's `npipe://` transport is as of now unreachable from the `http get` command.
 
 ## How the shadowing works
 
@@ -94,12 +114,14 @@ To make it permanent, put `use nu-docker-shim *` in your `config.nu`.
 ### Requirements
 
 - **Nushell 0.114+**
-- A reachable **Docker daemon**. The socket is resolved from `$env.DOCKER_HOST` when it is a
-  `unix://` URL, otherwise `/var/run/docker.sock`. TCP/TLS daemons are out of scope.
-- **Unix-socket platforms only — no native Windows (for now).** The module talks to the daemon
-  exclusively over a Unix socket (`http get --unix-socket`), so it runs on **Linux and macOS**.
+- A reachable **local Docker daemon**. The socket is `$env.DOCKER_HOST` when it is a `unix://` URL,
+  otherwise the first existing of `/var/run/docker.sock`, `~/.docker/run/docker.sock` (Docker
+  Desktop), and `$XDG_RUNTIME_DIR/docker.sock` (rootless). A non-`unix://` `DOCKER_HOST` errors;
+  remote TCP/TLS and `ssh://` are out of scope.
+- **Unix-socket platforms only — no native Windows.** The module talks to the daemon exclusively
+  over a Unix socket (`http get --unix-socket`), so it runs on **Linux and macOS** (incl. WSL2).
 
-## Differences from docekr commands
+## Differences from docker commands
 
 nu-docker-shim implements all the flags of the corresponding docker command and adds some nushell-specific conveniences.
 

@@ -35,7 +35,9 @@
 #   client.nu   generated from spec/docker.swagger.yaml (GET-only; never hand-edited)
 #   *.nu        this hand-written ergonomic wrapper
 #
-# Socket resolved from $env.DOCKER_HOST (when unix://) or /var/run/docker.sock.
+# Local unix socket only: $env.DOCKER_HOST (when unix://), else the first existing
+# of /var/run/docker.sock, ~/.docker/run/docker.sock, $XDG_RUNTIME_DIR/docker.sock.
+# See `common docker-socket`.
 
 use common.nu
 

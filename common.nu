@@ -6,19 +6,34 @@
 
 use client.nu
 
-# Standard Docker unix socket; `docker-socket` falls back to this.
-const DEFAULT_SOCKET = "/var/run/docker.sock"
-
-# Resolve the Docker Engine API unix socket path.
-# Honors `$env.DOCKER_HOST` when it is a `unix://` URL, otherwise the standard
-# socket. TCP/TLS daemons are out of scope — talk to `client.nu` directly for those.
+# Resolve the local Docker Engine API unix socket.
+#
+# nu-docker-shim talks to a local, unauthenticated daemon only (no TCP/TLS/ssh) —
+# by design. Resolution order:
+#   1. `$env.DOCKER_HOST`, if it is a `unix://` URL — its path is used verbatim.
+#      A non-`unix://` DOCKER_HOST (e.g. `tcp://`, `ssh://`) is a hard error, not a
+#      silent fall-through to the local socket: it means the user is pointing docker
+#      at a daemon we can't reach, so we say so and defer to `^docker`.
+#   2. otherwise the first of these that exists — covering standard Linux, Docker
+#      Desktop (macOS/Linux, where `/var/run/docker.sock` is a symlink to it), and
+#      rootless Linux (`$XDG_RUNTIME_DIR/docker.sock`).
+# Errors clearly when none exist (daemon stopped / non-standard path).
 export def docker-socket []: nothing -> string {
   let h = ($env | get -o DOCKER_HOST | default "")
-  if ($h | str starts-with "unix://") {
-    $h | str replace "unix://" ""
-  } else {
-    $DEFAULT_SOCKET
+  if ($h | str starts-with "unix://") { return ($h | str replace "unix://" "") }
+  if ($h | is-not-empty) {
+    error make --unspanned { msg: $"nu-docker-shim is local-socket only, but $env.DOCKER_HOST=($h) is not a unix:// URL. Unset it, or use `^docker` to reach that daemon." }
   }
+  let xdg = ($env | get -o XDG_RUNTIME_DIR | default "")
+  let candidates = ([
+    "/var/run/docker.sock"                                # standard Linux / Docker Desktop symlink
+    ($env.HOME | path join ".docker" "run" "docker.sock") # Docker Desktop real socket (macOS & Linux)
+  ] | append (if ($xdg | is-not-empty) { [($xdg | path join "docker.sock")] } else { [] }))  # rootless
+  let found = ($candidates | where {|p| $p | path exists })
+  if ($found | is-empty) {
+    error make --unspanned { msg: $"no local Docker socket found \(looked in: ($candidates | str join ', ')). Is Docker running?" }
+  }
+  $found | first
 }
 
 # Encode Docker's `filters` query value from a record whose values are each a
