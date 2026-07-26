@@ -1,5 +1,5 @@
 # Auto-generated client for Docker Engine API v1.47
-# Source: /Users/colombos/projects/personal/nushell/modules/dockerw/spec/docker.swagger.yaml
+# Source: /Users/colombos/projects/personal/nushell/modules/nu-docker-shim/spec/docker.swagger.yaml
 # Auth: --token flag or $env.DOCKER_ENGINE_API_TOKEN
 
 const BASE_URL = "http://localhost/v1.47"

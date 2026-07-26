@@ -1,13 +1,13 @@
-# docker-wrapper (dockerw)
+# nu-docker-shim
 
 **Structured, typed, read-only Docker introspection for Nushell.**
 
-`dockerw` overrides the default docker introspection commands with its own implementation.  
+`nu-docker-shim` overrides the default docker introspection commands with its own implementation.  
 You keep typing `docker ps`, but you get back Nushell values instead of text.  
 
 ---
 
-- [docker-wrapper (dockerw)](#docker-wrapper-(dockerw))
+- [nu-docker-shim](#nu-docker-shim)
   - [Why?](#why?)
   - [How the shadowing works](#how-the-shadowing-works)
   - [Installation](#installation)
@@ -44,7 +44,7 @@ Answering these with the `docker` CLI means wrestling with `--format` templates 
 - *how much disk can I reclaim from dangling images?*
 - *which container is publishing to host port 5432?*
 
-Because `dockerw` returns real Nushell values, you filter, sort, sum, and join them like any data:
+Because `nu-docker-shim` returns real Nushell values, you filter, sort, sum, and join them like any data:
 
 ```nu
 # containers that died badly
@@ -60,36 +60,36 @@ docker ps -o wide | where ($it.ports.host_port | any {|p| $p == 5432}) | get nam
 
 ## How the shadowing works
 
-Nushell resolves the **longest matching internal command name** first. `dockerw` exports
+Nushell resolves the **longest matching internal command name** first. `nu-docker-shim` exports
 multi-word defs like `def "docker ps"` and `def "docker container inspect"`. When one matches, it
 wins over the external `docker`. When nothing matches (`docker run`, `docker build`, …), Nushell
 falls back to the external binary, with your configured autocompleter.
 
 ```nu
-use dockerw *       # the * is MANDATORY — see below
+use nu-docker-shim *       # the * is MANDATORY — see below
 
-docker ps           # dockerw: structured table of containers (shadowed)
-docker images       # dockerw: structured table of images   (shadowed)
+docker ps           # nu-docker-shim: structured table of containers (shadowed)
+docker images       # nu-docker-shim: structured table of images   (shadowed)
 docker run -it …    # real docker: falls straight through   (not shadowed)
 docker --version    # real docker: falls straight through
 ```
 
-- **`use dockerw *` — the `*` is required.** Without it the commands land under a `dockerw` namespace
+- **`use nu-docker-shim *` — the `*` is required.** Without it the commands land under a `nu-docker-shim` namespace
 - **Non-shadowed commands keep native completion** from your configured completer.
 
 ## Installation
 
 ```nu
 # clone into one of your NU_LIB_DIRS
-let dest = [($env.NU_LIB_DIRS | first) dockerw] | path join
-git clone git@github.com:lassoColombo/dockerw.git $dest
+let dest = [($env.NU_LIB_DIRS | first) nu-docker-shim] | path join
+git clone git@github.com:lassoColombo/nu-docker-shim.git $dest
 
 # load it — the * is mandatory so the `docker …` defs shadow the real subcommands
-use dockerw *
+use nu-docker-shim *
 docker ps
 ```
 
-To make it permanent, put `use dockerw *` in your `config.nu`.
+To make it permanent, put `use nu-docker-shim *` in your `config.nu`.
 
 ### Requirements
 
@@ -101,12 +101,12 @@ To make it permanent, put `use dockerw *` in your `config.nu`.
 
 ## Differences from docekr commands
 
-Dockerw implements all the flags of the corresponding docker command and adds some nushell-specific conveniences.
+nu-docker-shim implements all the flags of the corresponding docker command and adds some nushell-specific conveniences.
 
 ### Output modes
 
 Every shadowed command **except `docker top`** takes `--output` (`-o`) with three levels (a
-dockerw-specific addition; `top` is skipped because `-o` collides with `ps`'s own option forwarded
+nu-docker-shim-specific addition; `top` is skipped because `-o` collides with `ps`'s own option forwarded
 through `top`'s ps-args):
 
 | mode | what you get |
@@ -129,7 +129,7 @@ uncurated single records (`info`, `version`) `wide == full`.
 ### Filtering
 
 Docker's `-f status=running -f label=…` **cannot** be expressed in Nushell (a flag can't repeat).
-So `dockerw` exposes each filter as its **own discrete, completable flag** instead of one repeated `--filter`:
+So `nu-docker-shim` exposes each filter as its **own discrete, completable flag** instead of one repeated `--filter`:
 
 ```nu
 docker ps --status running --network db-net --ancestor nginx

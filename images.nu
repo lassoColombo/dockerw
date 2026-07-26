@@ -1,6 +1,6 @@
 # Image commands — exact wrappers of `docker images`, `docker image inspect`,
 # `docker history`, `docker search`. Same flags as docker; structured output.
-# `--output (-o) compact|wide|full` is a dockerw-specific addition on the two
+# `--output (-o) compact|wide|full` is a nu-docker-shim-specific addition on the two
 # resource commands (`images` / `image inspect`).
 use client.nu
 use common.nu

@@ -1,6 +1,6 @@
-# Shared internal helpers for the `dockerw` Docker-introspection module.
+# Shared internal helpers for the `nu-docker-shim` Docker-introspection module.
 #
-# Nothing here is part of the public `dockerw` surface — the wrapper files `use`
+# Nothing here is part of the public `nu-docker-shim` surface — the wrapper files `use`
 # these helpers to resolve the socket, encode filters, demultiplex log streams,
 # format raw API values into typed, queryable columns, and complete object refs.
 

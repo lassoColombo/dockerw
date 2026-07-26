@@ -1,10 +1,10 @@
 # Container commands — exact wrappers of `docker ps`, `docker container inspect`,
 # `docker stats`, `docker top`, `docker diff`. Same flags as docker; the output
 # is structured/typed instead of text. `--output (-o) compact|wide|full` is a
-# dockerw-specific addition on `ps` / `container inspect` (docker has no such
+# nu-docker-shim-specific addition on `ps` / `container inspect` (docker has no such
 # flag and `-o` is free on these commands).
 #
-# Loaded via `use dockerw *`, these `def "docker …"` commands shadow the matching
+# Loaded via `use nu-docker-shim *`, these `def "docker …"` commands shadow the matching
 # real docker subcommands; every other `docker …` command falls through to the
 # native binary untouched.
 use client.nu

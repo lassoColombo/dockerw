@@ -46,7 +46,7 @@ def main [] {
   # straight from the spec, and Nushell *runtime-enforces* a command's declared
   # output type. But Docker's live responses routinely drift from the spec schema
   # (extra/missing fields, looser nullability), so an otherwise-valid response
-  # fails the type check — `GET /system/df` is one example. The `dockerw` wrapper
+  # fails the type check — `GET /system/df` is one example. The `nu-docker-shim` wrapper
   # re-types every result itself, so the client's static types add fragility
   # without value. We rewrite only the public command signature terminators
   # (lines of the form `]: <in> -> <out> {`); helper defs are untouched.

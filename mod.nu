@@ -1,9 +1,9 @@
-# dockerw — structured, read-only Docker introspection for Nushell.
+# nu-docker-shim — structured, read-only Docker introspection for Nushell.
 #
 # This module *shadows* a handful of `docker` subcommands with exact wrappers
 # that return structured, typed, queryable data instead of text. Load it with:
 #
-#     use /path/to/dockerw *        # note the `*` — the defs must be unprefixed
+#     use /path/to/nu-docker-shim *        # note the `*` — the defs must be unprefixed
 #
 # so `def "docker ps"`, `def "docker images"`, … override the real subcommands.
 # Every OTHER `docker …` command (run, build, logs, exec, …) is untouched and
@@ -18,7 +18,7 @@
 #   docker info · docker version · docker system df
 #
 # Every structured command except `docker top` accepts --output (-o) compact|wide|full
-# (a dockerw-specific flag with real function; `top` is skipped because -o would clash
+# (a nu-docker-shim-specific flag with real function; `top` is skipped because -o would clash
 # with `ps`'s own -o option passed through its ps-args):
 #   compact  primitives only (no nested columns)   [default when listing]
 #   wide     richer, may include nested columns     [default for one object]

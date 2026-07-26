@@ -1,6 +1,6 @@
 # Volume commands — exact wrappers of `docker volume ls` / `docker volume inspect`.
 # Same flags as docker; structured output. `--output (-o) compact|wide|full` is a
-# dockerw-specific addition.
+# nu-docker-shim-specific addition.
 use client.nu
 use common.nu
 

@@ -1,6 +1,6 @@
 # Network commands — exact wrappers of `docker network ls` / `docker network inspect`.
 # Same flags as docker; structured output. `--output (-o) compact|wide|full` is a
-# dockerw-specific addition.
+# nu-docker-shim-specific addition.
 use client.nu
 use common.nu
 
