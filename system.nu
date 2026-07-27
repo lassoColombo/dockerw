@@ -12,7 +12,7 @@ use common.nu
 @example "the full info record" { docker info }
 @example "number of running containers" { docker info | get ContainersRunning }
 @example "just the scalar fields" { docker info -o compact }
-export def "docker info" [
+export def "info" [
   --output (-o): string@"common output-completer"   # shape: wide (default, == full) | compact (scalars only) | full
 ]: nothing -> any {
   let raw = (client info get-system --unix-socket (common docker-socket))
@@ -26,7 +26,7 @@ export def "docker info" [
 @search-terms version api build server engine
 @example "version details" { docker version }
 @example "the negotiated API version" { docker version | get ApiVersion }
-export def "docker version" [
+export def "version" [
   --output (-o): string@"common output-completer"   # shape: wide (default, == full) | compact (scalars only) | full
 ]: nothing -> any {
   let raw = (client version version-system --unix-socket (common docker-socket))
@@ -41,7 +41,7 @@ export def "docker version" [
 @search-terms system df disk usage space reclaim prune
 @example "disk-usage summary" { docker system df }
 @example "total space used by all types" { docker system df | get size | math sum }
-export def "docker system df" [
+export def "system df" [
   --output (-o): string@"common output-completer"   # shape: compact (default) | wide | full (raw usage record)
 ]: nothing -> any {
   let df = (client system-df get-data-usage --unix-socket (common docker-socket))
@@ -79,4 +79,4 @@ export def "docker system df" [
 }
 
 # --- alias: docker's `system` form of `info` ---
-export alias "docker system info" = docker info
+export alias "system info" = info

@@ -4,9 +4,9 @@
 # nu-docker-shim-specific addition on `ps` / `container inspect` (docker has no such
 # flag and `-o` is free on these commands).
 #
-# Loaded via `use nu-docker-shim *`, these `def "docker …"` commands shadow the matching
-# real docker subcommands; every other `docker …` command falls through to the
-# native binary untouched.
+# Commands are named facade-neutrally (`ps`, `container inspect`, …); the docker-
+# shadowing names (`docker ps`, …) are added by shim.nu. Assembled by core.nu.
+# See mod.nu's header for the two facades.
 use client.nu
 use common.nu
 
@@ -81,7 +81,7 @@ def shape-container-detail [c: record]: nothing -> record {
 @example "stopped containers that exited non-zero" { docker ps -a | where state == exited and exit_code != 0 | select name exit_code }
 @example "filter by state and network (both complete live)" { docker ps --status running --network bridge }
 @example "filter by compose labels" { docker ps --label com.docker.compose.project=mole,com.docker.compose.service=db }
-export def "docker ps" [
+export def "ps" [
   --all (-a)                                        # include stopped containers (default: running only)
   --status: string@complete-status                  # run state: created|restarting|running|removing|paused|exited|dead
   --health: string@complete-health                  # health: starting|healthy|unhealthy|none
@@ -132,7 +132,7 @@ export def "docker ps" [
 @example "inspect one container" { docker container inspect redis }
 @example "just its mounts" { docker container inspect redis | get mounts }
 @example "inspect several, raw API shape" { docker container inspect redis nginx -o full }
-export def "docker container inspect" [
+export def "container inspect" [
   ...container: string@"common complete-container"   # one or more container names or ids
   --output (-o): string@"common output-completer"    # shape: wide (single-object default) | compact | full (raw API)
 ]: nothing -> any {
@@ -158,7 +158,7 @@ export def "docker container inspect" [
 @example "running containers, busiest CPU first" { docker stats | sort-by "cpu%" --reverse }
 @example "specific containers" { docker stats redis postgres }
 @example "memory hogs" { docker stats | sort-by mem --reverse | select name mem "mem%" }
-export def "docker stats" [
+export def "stats" [
   ...container: string@"common complete-container"   # containers to sample (default: all running)
   --all (-a)                                         # sample stopped containers too (they report zeros)
   --output (-o): string@"common output-completer"    # shape: compact (default) | wide | full (raw stats)
@@ -198,7 +198,7 @@ export def "docker stats" [
 @example "processes in a container" { docker top mole-psql-local-dev }
 @example "process count" { docker top redis | length }
 @example "just pids and commands" { docker top redis | select PID CMD }
-export def "docker top" [
+export def "top" [
   container: string@"common complete-container"   # the container to inspect
   ...ps_args: string                              # optional `ps` arguments forwarded to the daemon (e.g. `aux`)
 ]: nothing -> table {
@@ -222,7 +222,7 @@ export def "docker top" [
 @search-terms diff changes filesystem modified added deleted
 @example "all changes" { docker diff redis }
 @example "only added paths" { docker diff redis | where kind == added | get path }
-export def "docker diff" [
+export def "diff" [
   container: string@"common complete-container"   # the container to inspect
   --output (-o): string@"common output-completer"   # shape: compact (default) | wide | full (raw {Path, Kind})
 ]: nothing -> any {
@@ -242,7 +242,7 @@ export def "docker diff" [
 @example "all published ports" { docker port redis }
 @example "mapping for one container port" { docker port redis 6379 }
 @example "just the host ports" { docker port nginx | get host_port }
-export def "docker port" [
+export def "port" [
   container: string@"common complete-container"   # the container to inspect
   private_port?: string                           # optional PRIVATE_PORT[/PROTO] to filter to, e.g. 6379 or 6379/tcp
   --output (-o): string@"common output-completer"   # shape: compact (default) | wide | full (raw port map)
@@ -259,10 +259,10 @@ export def "docker port" [
 }
 
 # --- aliases: docker's object-subcommand forms of the commands above ---
-export alias "docker container ls" = docker ps
-export alias "docker container list" = docker ps
-export alias "docker container ps" = docker ps
-export alias "docker container stats" = docker stats
-export alias "docker container top" = docker top
-export alias "docker container diff" = docker diff
-export alias "docker container port" = docker port
+export alias "container ls" = ps
+export alias "container list" = ps
+export alias "container ps" = ps
+export alias "container stats" = stats
+export alias "container top" = top
+export alias "container diff" = diff
+export alias "container port" = port

@@ -5,7 +5,7 @@
 > `nu-docker-shim` can override the default docker introspection commands with its own implementation.  
 > You keep typing `docker ps`, but you get back Nushell values instead of text.  
 
-> In alternative, it can be used as a standalone module alongside the docker command:
+> In alternative, it can be used as a standalone module alongside the docker command:  
 > you type `docker-shim ps` or whatever short alias you like and you get structured data. 
 
 - [nu-docker-shim](#nu-docker-shim)
@@ -67,8 +67,8 @@ docker ps -o wide | where ($it.ports.host_port | any {|p| $p == 5432}) | get nam
 **nu-docker-shim is:**
 
 - A module that give you structured, typed output for most of the docker introspection commands 
-- A module that expeses docker's flags in a more nushell idiomatic syntax.
-- Return either a shaped view (`-o compact|wide`) **or** the raw API response (`-o full`).
+- A shadower shim that expeses docker's flags in a more nushell idiomatic syntax.
+- A way to get a shaped view of docker objects (`-o compact|wide`) **or** the raw API response from the server (`-o full`).
 
 **It is not:**
 
@@ -78,25 +78,6 @@ docker ps -o wide | where ($it.ports.host_port | any {|p| $p == 5432}) | get nam
   non-`unix://` `$env.DOCKER_HOST` is a **hard error**.
 - **No native Windows** — Docker Desktop's `npipe://` transport is as of now unreachable from the `http get` command.
 
-## How the shadowing works
-
-Nushell resolves the **longest matching internal command name** first. `nu-docker-shim` exports
-multi-word defs like `def "docker ps"` and `def "docker container inspect"`. When one matches, it
-wins over the external `docker`. When nothing matches (`docker run`, `docker build`, …), Nushell
-falls back to the external binary, with your configured autocompleter.
-
-```nu
-use nu-docker-shim *       # the * is MANDATORY — see below
-
-docker ps           # nu-docker-shim: structured table of containers (shadowed)
-docker images       # nu-docker-shim: structured table of images   (shadowed)
-docker run -it …    # real docker: falls straight through   (not shadowed)
-docker --version    # real docker: falls straight through
-```
-
-- **`use nu-docker-shim *` — the `*` is required.** Without it the commands land under a `nu-docker-shim` namespace
-- **Non-shadowed commands keep native completion** from your configured completer.
-
 ## Installation
 
 ```nu
@@ -104,12 +85,10 @@ docker --version    # real docker: falls straight through
 let dest = [($env.NU_LIB_DIRS | first) nu-docker-shim] | path join
 git clone git@github.com:lassoColombo/nu-docker-shim.git $dest
 
-# load it — the * is mandatory so the `docker …` defs shadow the real subcommands
-use nu-docker-shim *
-docker ps
+# load it (see configuration section)
+use nu-docker-shim
+nu-docker-shim ps
 ```
-
-To make it permanent, put `use nu-docker-shim *` in your `config.nu`.
 
 ### Requirements
 
@@ -120,6 +99,71 @@ To make it permanent, put `use nu-docker-shim *` in your `config.nu`.
   remote TCP/TLS and `ssh://` are out of scope.
 - **Unix-socket platforms only — no native Windows.** The module talks to the daemon exclusively
   over a Unix socket (`http get --unix-socket`), so it runs on **Linux and macOS** (incl. WSL2).
+
+## Configuration 
+
+Nu-docker-shim can be configured either as a shim or as a standalone module.  
+
+When configured as a shim, it will shadow some of the docker commands:  
+You type `docker ps`, but you get back Nushell values instead of text.  
+
+When configured as a standalone module it can be used alongside the docker command:  
+`docker ps` will return text, but `docker-shim ps` will return structured data.
+
+Both flavours are the same implementation — just imported differently.
+
+### Configure as a module
+
+The default. Commands live under the module name, so they sit **alongside** the real
+`docker` command without shadowing it. Add to your `config.nu`:
+
+```nu
+use nu-docker-shim
+
+nu-docker-shim ps                       # structured containers
+nu-docker-shim volume ls                # structured volumes
+docker ps                               # still the real docker (text)
+```
+
+The `nu-docker-shim` prefix is long. Nushell has no `use … as` to rename a module prefix,
+so wrap the import in a module of whatever name you like:
+
+```nu
+module ds { export use nu-docker-shim * }
+use ds
+
+ds ps
+ds container inspect redis
+```
+
+> Avoid bare `use nu-docker-shim *` (unprefixed): it would drop `ps`, `top`, `inspect`, … into
+> your scope, shadowing Nushell's built-ins of those names. Use a prefix (module or wrapper).
+
+### Configure as a shim
+
+Shadows the matching `docker …` subcommands: you type `docker ps`, you get Nushell values.
+Load the nested `shim` submodule **with the `*`**. Add to your `config.nu`:
+
+```nu
+use nu-docker-shim shim *
+
+docker ps           # nu-docker-shim: structured table of containers (shadowed)
+docker images       # nu-docker-shim: structured table of images   (shadowed)
+docker run -it …    # real docker: falls straight through   (not shadowed)
+docker --version    # real docker: falls straight through
+```
+
+- **The `*` is required.** Without it the commands land under a `nu-docker-shim shim` namespace — useless.
+- **Non-shadowed commands keep native completion** from your configured completer.
+
+#### How the shadowing works
+
+Nushell resolves the **longest matching internal command name** first. The shim exports
+aliases like `docker ps` and `docker container inspect` onto the structured commands.
+When one matches, it wins over the external `docker`. When nothing matches (`docker run`,
+`docker build`, …), Nushell falls back to the external binary, with your configured
+autocompleter. The aliases inherit each command's full signature and completers, so
+`docker ps --status <TAB>` completes natively.
 
 ## Differences from docker commands
 

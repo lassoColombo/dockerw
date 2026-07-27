@@ -54,7 +54,7 @@ def shape-network-detail [n: record]: nothing -> record {
 @example "all networks" { docker network ls }
 @example "user-defined bridge networks" { docker network ls --type custom --driver bridge }
 @example "networks unused by any container" { docker network ls --dangling | get name }
-export def "docker network ls" [
+export def "network ls" [
   --type: string@complete-network-type              # network type: custom | builtin
   --scope: string@complete-scope                    # scope: swarm | global | local
   --driver: string@complete-network-driver          # driver: bridge|host|overlay|macvlan|ipvlan|none
@@ -88,7 +88,7 @@ export def "docker network ls" [
 @example "inspect a network" { docker network inspect bridge }
 @example "its subnets" { docker network inspect bridge | get subnets }
 @example "containers attached to a network" { docker network inspect my-net | get containers }
-export def "docker network inspect" [
+export def "network inspect" [
   ...network: string@"common complete-network"      # one or more network names or ids
   --output (-o): string@"common output-completer"    # shape: wide (single-object default) | compact | full (raw API)
 ]: nothing -> any {
@@ -104,4 +104,4 @@ export def "docker network inspect" [
 }
 
 # --- alias: docker's `list` form of `network ls` ---
-export alias "docker network list" = docker network ls
+export alias "network list" = network ls

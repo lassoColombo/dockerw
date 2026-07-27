@@ -71,7 +71,7 @@ def shape-image-detail [i: record]: nothing -> record {
 @example "images over 1 GB, largest first" { docker images | where size > 1gb | sort-by size --reverse }
 @example "one repository" { docker images postgres }
 @example "dangling (untagged) images and their size" { docker images --dangling | select repository tag size }
-export def "docker images" [
+export def "images" [
   repository?: string@"common complete-image"       # optional REPOSITORY[:TAG] to narrow to
   --all (-a)                                         # include intermediate layers (default: hidden)
   --digests                                          # add a `digest` column
@@ -105,7 +105,7 @@ export def "docker images" [
 @search-terms inspect image detail config layers digest
 @example "inspect an image" { docker image inspect postgres:16 }
 @example "its exposed ports" { docker image inspect nginx | get exposed_ports }
-export def "docker image inspect" [
+export def "image inspect" [
   ...image: string@"common complete-image"          # one or more image names or ids
   --output (-o): string@"common output-completer"    # shape: wide (single-object default) | compact | full (raw API)
 ]: nothing -> any {
@@ -128,7 +128,7 @@ export def "docker image inspect" [
 @search-terms history layers build image size
 @example "layer history" { docker history postgres:16 }
 @example "total image size from layers" { docker history nginx | get size | math sum }
-export def "docker history" [
+export def "history" [
   image: string@"common complete-image"             # the image to inspect
   --no-trunc                                         # don't truncate ids or the build instruction
   --quiet (-q)                                        # output only layer ids (a list<string>)
@@ -156,7 +156,7 @@ export def "docker history" [
 @search-terms search hub find registry stars official
 @example "search Docker Hub" { docker search nginx }
 @example "popular official images only" { docker search postgres --official --stars 100 --limit 10 }
-export def "docker search" [
+export def "search" [
   term: string                                       # the term to search Docker Hub for
   --stars: int                                       # minimum star count
   --official                                         # only official images (is-official=true)
@@ -181,6 +181,6 @@ export def "docker search" [
 }
 
 # --- aliases: docker's `image` subcommand forms of the commands above ---
-export alias "docker image ls" = docker images
-export alias "docker image list" = docker images
-export alias "docker image history" = docker history
+export alias "image ls" = images
+export alias "image list" = images
+export alias "image history" = history

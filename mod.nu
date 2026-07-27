@@ -1,25 +1,31 @@
 # nu-docker-shim — structured, read-only Docker introspection for Nushell.
 #
-# This module *shadows* a handful of `docker` subcommands with exact wrappers
-# that return structured, typed, queryable data instead of text. Load it with:
+# Wraps a subset of docker's introspection subcommands with exact wrappers that
+# return structured, typed, queryable data instead of text. The same
+# implementation (core.nu) is exposed through two facades — pick one at import:
 #
-#     use /path/to/nu-docker-shim *        # note the `*` — the defs must be unprefixed
+#   STANDALONE (default) — commands live under the module name, alongside real docker:
+#       use nu-docker-shim          # -> `nu-docker-shim ps`, `nu-docker-shim volume ls`, …
+#       module ds { export use nu-docker-shim * }   # rename the prefix to taste
+#       use ds                      # -> `ds ps`, `ds volume ls`, …
+#     Real `docker …` is untouched — this flavour sits beside it, it does not shadow it.
 #
-# so `def "docker ps"`, `def "docker images"`, … override the real subcommands.
-# Every OTHER `docker …` command (run, build, logs, exec, …) is untouched and
-# falls straight through to the native `docker` binary — with its own native
-# completion (via your external completer, e.g. carapace).
+#   SHIM — shadows the matching docker subcommands (load with `*`, unprefixed):
+#       use nu-docker-shim shim *   # -> `docker ps`, `docker volume ls`, … override real docker
+#     Every OTHER `docker …` command (run, build, logs, exec, …) falls straight
+#     through to the native binary, untouched. See shim.nu.
 #
-# Shadowed (structured) commands — docker's flags that actually do something here
-# (flags with no effect on structured output, like --format, are dropped):
-#   docker ps · docker container inspect · docker stats · docker top · docker diff
-#   docker images · docker image inspect · docker history · docker search
-#   docker network ls · docker network inspect · docker volume ls · docker volume inspect
-#   docker info · docker version · docker system df
+# Shadowed / wrapped (structured) commands — docker's flags that actually do
+# something here are kept; flags with no effect on structured output (--format, …)
+# are dropped. Standalone names shown; the shim prefixes each with `docker `:
+#   ps · container inspect · stats · top · diff · port
+#   images · image inspect · history · search
+#   network ls · network inspect · volume ls · volume inspect
+#   info · version · system df · inspect (generic, auto-detects type)
 #
-# Every structured command except `docker top` accepts --output (-o) compact|wide|full
-# (a nu-docker-shim-specific flag with real function; `top` is skipped because -o would clash
-# with `ps`'s own -o option passed through its ps-args):
+# Every structured command except `top` accepts --output (-o) compact|wide|full
+# (a nu-docker-shim addition; `top` is skipped because -o would clash with `ps`'s
+# own -o, forwarded through top's ps-args):
 #   compact  primitives only (no nested columns)   [default when listing]
 #   wide     richer, may include nested columns     [default for one object]
 #   full     the raw, unshaped Docker API response
@@ -27,52 +33,22 @@
 # Filters are exposed as discrete, completable flags — Nushell can only complete
 # scalar flag values, never inside a `{record}`/`[list]` literal, so a flag per
 # key is the only shape that completes (many with live socket-backed values:
-# `--network`, `--volume`, `--ancestor`, `--name`, …). `docker ps --status running
+# `--network`, `--volume`, `--ancestor`, `--name`, …). `ps --status running
 # --network db` instead of docker's `-f status=running -f network=db`. Any key
 # without its own flag goes through `--filter {record}`, the raw escape hatch.
 #
+# NOTE on help: each command's docstring/@example uses the canonical `docker …`
+# form (it documents the real docker command it wraps). In standalone mode drop
+# the `docker ` prefix (`docker ps --all` -> `ps --all` / `nu-docker-shim ps --all`).
+#
 # Layers:
 #   client.nu   generated from spec/docker.swagger.yaml (GET-only; never hand-edited)
-#   *.nu        this hand-written ergonomic wrapper
+#   common.nu   shared helpers (socket, filters, shaping, completers)
+#   *.nu        the hand-written ergonomic wrappers (core.nu assembles them)
 #
 # Local unix socket only: $env.DOCKER_HOST (when unix://), else the first existing
 # of /var/run/docker.sock, ~/.docker/run/docker.sock, $XDG_RUNTIME_DIR/docker.sock.
 # See `common docker-socket`.
 
-use common.nu
-
-export use containers.nu *
-export use images.nu *
-export use networks.nu *
-export use volumes.nu *
-export use system.nu *
-
-# Inspect any object, auto-detecting its type.
-#
-# Generic wrapper of `docker inspect`. For each ref it tries container -> image ->
-# network -> volume in turn and returns the same curated detail as the matching
-# `docker <type> inspect`. Anything else docker can inspect (plugins, swarm
-# objects, …) falls back to `^docker inspect` parsed into a structured record.
-# A single ref returns one record; multiple refs return a list. Prefer the
-# type-specific commands when you know the type — they also complete the ref.
-@search-terms inspect detail object generic auto-detect
-@example "inspect whatever this ref is" { docker inspect redis }
-@example "mix types in one call" { docker inspect redis postgres:16 bridge }
-@example "raw API response" { docker inspect redis -o full }
-export def "docker inspect" [
-  ...ref: string                                    # one or more object names/ids, of any type
-  --output (-o): string@"common output-completer"   # shape: wide (single-object default) | compact | full (raw API)
-]: nothing -> any {
-  if ($ref | is-empty) { error make {msg: '"docker inspect" requires at least 1 argument'} }
-  let mode = ($output | default "wide")
-  let results = ($ref | each {|r|
-    try { docker container inspect $r -o $mode } catch {
-    try { docker image inspect $r -o $mode } catch {
-    try { docker network inspect $r -o $mode } catch {
-    try { docker volume inspect $r -o $mode } catch {
-      let raw = (^docker inspect $r | from json | first)
-      common render-output $output $raw $raw
-    }}}}
-  })
-  if (($ref | length) == 1) { $results | first } else { $results }
-}
+export use core.nu *
+export module shim.nu

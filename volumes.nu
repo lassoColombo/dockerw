@@ -44,7 +44,7 @@ def shape-volume-detail [v: record]: nothing -> record {
 @example "all volumes" { docker volume ls }
 @example "volumes unused by any container" { docker volume ls --dangling | get name }
 @example "local-driver volumes named like data" { docker volume ls --driver local --name data }
-export def "docker volume ls" [
+export def "volume ls" [
   --dangling                                        # only volumes unused by any container (for =false use --filter {dangling: false})
   --driver: string                                  # volume driver (e.g. local)
   --name: string@"common complete-volume"           # name (substring match)
@@ -73,7 +73,7 @@ export def "docker volume ls" [
 @search-terms inspect volume detail mountpoint driver options
 @example "inspect a volume" { docker volume inspect devutils_dumbo-postgres-data }
 @example "just the mountpoint" { docker volume inspect my-vol | get mountpoint }
-export def "docker volume inspect" [
+export def "volume inspect" [
   ...volume: string@"common complete-volume"        # one or more volume names
   --output (-o): string@"common output-completer"    # shape: wide (single-object default) | compact | full (raw API)
 ]: nothing -> any {
@@ -89,4 +89,4 @@ export def "docker volume inspect" [
 }
 
 # --- alias: docker's `list` form of `volume ls` ---
-export alias "docker volume list" = docker volume ls
+export alias "volume list" = volume ls
