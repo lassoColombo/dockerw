@@ -1,4 +1,4 @@
-# Volume commands — exact wrappers of `docker volume ls` / `docker volume inspect`.
+# Volume commands - exact wrappers of `docker volume ls` / `docker volume inspect`.
 # Same flags as docker; structured output. `--output (-o) compact|wide|full` is a
 # nu-docker-shim-specific addition.
 use client.nu
@@ -66,8 +66,8 @@ export def "volume ls" [
 
 # Inspect one or more volumes in full detail.
 #
-# Exact wrapper of `docker volume inspect`. Returns the curated per-volume detail —
-# driver, scope, mountpoint, `created` (`datetime`), options, labels — or the raw
+# Exact wrapper of `docker volume inspect`. Returns the curated per-volume detail -
+# driver, scope, mountpoint, `created` (`datetime`), options, labels - or the raw
 # API response with `-o full`. A single ref returns one record; multiple refs
 # return a list.
 @search-terms inspect volume detail mountpoint driver options

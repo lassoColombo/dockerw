@@ -1,40 +1,23 @@
 # Shared internal helpers for the `nu-docker-shim` Docker-introspection module.
 #
-# Nothing here is part of the public `nu-docker-shim` surface — the wrapper files `use`
+# Nothing here is part of the public `nu-docker-shim` surface - the wrapper files `use`
 # these helpers to resolve the socket, encode filters, demultiplex log streams,
 # format raw API values into typed, queryable columns, and complete object refs.
 
 use client.nu
 
-# Resolve the local Docker Engine API unix socket.
+# Vestigial socket resolver - transport is now delegated to the docker CLI.
 #
-# nu-docker-shim talks to a local, unauthenticated daemon only (no TCP/TLS/ssh) —
-# by design. Resolution order:
-#   1. `$env.DOCKER_HOST`, if it is a `unix://` URL — its path is used verbatim.
-#      A non-`unix://` DOCKER_HOST (e.g. `tcp://`, `ssh://`) is a hard error, not a
-#      silent fall-through to the local socket: it means the user is pointing docker
-#      at a daemon we can't reach, so we say so and defer to `^docker`.
-#   2. otherwise the first of these that exists — covering standard Linux, Docker
-#      Desktop (macOS/Linux, where `/var/run/docker.sock` is a symlink to it), and
-#      rootless Linux (`$XDG_RUNTIME_DIR/docker.sock`).
-# Errors clearly when none exist (daemon stopped / non-standard path).
-export def docker-socket []: nothing -> string {
-  let h = ($env | get -o DOCKER_HOST | default "")
-  if ($h | str starts-with "unix://") { return ($h | str replace "unix://" "") }
-  if ($h | is-not-empty) {
-    error make --unspanned { msg: $"nu-docker-shim is local-socket only, but $env.DOCKER_HOST=($h) is not a unix:// URL. Unset it, or use `^docker` to reach that daemon." }
-  }
-  let xdg = ($env | get -o XDG_RUNTIME_DIR | default "")
-  let candidates = ([
-    "/var/run/docker.sock"                                # standard Linux / Docker Desktop symlink
-    ($env.HOME | path join ".docker" "run" "docker.sock") # Docker Desktop real socket (macOS & Linux)
-  ] | append (if ($xdg | is-not-empty) { [($xdg | path join "docker.sock")] } else { [] }))  # rootless
-  let found = ($candidates | where {|p| $p | path exists })
-  if ($found | is-empty) {
-    error make --unspanned { msg: $"no local Docker socket found \(looked in: ($candidates | str join ', ')). Is Docker running?" }
-  }
-  $found | first
-}
+# nu-docker-shim used to talk to a local unix socket directly and resolve its
+# path here. Transport now goes through `docker system dial-stdio` (see
+# transport.nu), so docker itself selects the daemon from the active
+# `docker context` / $DOCKER_HOST / TLS / ssh - nu-docker-shim reaches any daemon
+# the docker CLI can, and no longer needs (or is restricted to) a local socket.
+#
+# The generated `client` commands still accept a `--unix-socket` value, so this
+# helper is kept as their argument, but the value is ignored by the transport.
+# It returns "" and never errors (a real socket is neither found nor required).
+export def docker-socket []: nothing -> string { "" }
 
 # Encode Docker's `filters` query value from a record whose values are each a
 # string or a list of strings (a list stands in for docker's repeated key). This
@@ -174,7 +157,7 @@ export def epoch-to-datetime []: any -> any {
 
 # Reshape a container's raw `Ports` (list of {IP?, PrivatePort, PublicPort?, Type})
 # into a typed, queryable list of records: `host_ip` (string|null), `host_port`
-# (int|null — null when the port is exposed but not published), `container_port`
+# (int|null - null when the port is exposed but not published), `container_port`
 # (int), `proto` (string). Ports are already ints on the wire, so this is a
 # rename/restructure rather than the lossy string `docker ps` prints.
 export def parse-ports []: any -> list {
@@ -235,7 +218,7 @@ export def output-completer []: nothing -> any {
   {
     options: {sort: false}
     completions: [
-      {value: "compact", description: "primitives only — no nested columns (default when listing)"}
+      {value: "compact", description: "primitives only - no nested columns (default when listing)"}
       {value: "wide", description: "adds nested columns: ports, mounts, labels, … (default for one object)"}
       {value: "full", description: "the raw, unshaped Docker API response"}
     ]
@@ -267,7 +250,7 @@ export def keep-primitives []: any -> any {
   if (($t | str starts-with "table") or ($t | str starts-with "list")) {
     if ($v | is-empty) { return $v }
     if (($v | first | describe | str starts-with "record") == false) { return $v }  # list of scalars
-    # A column is nested if *any* row holds a list/record/table there — drop it
+    # A column is nested if *any* row holds a list/record/table there - drop it
     # table-wide so the result is a clean, uniform primitives-only table.
     let nested = ($v | columns | where {|c|
       $v | any {|row|
@@ -301,7 +284,7 @@ export def iso-to-datetime []: any -> any {
   if ($s | is-empty) or ($s == "0001-01-01T00:00:00Z") { null } else { $s | into datetime }
 }
 
-# Parse the inspect-style port map — {"3306/tcp": [{HostIp, HostPort}], "33060/tcp": null} —
+# Parse the inspect-style port map - {"3306/tcp": [{HostIp, HostPort}], "33060/tcp": null} -
 # into the same typed record list as `parse-ports`: {host_ip, host_port, container_port, proto}.
 export def parse-ports-map []: any -> list {
   ($in | default {}) | items {|key bindings|

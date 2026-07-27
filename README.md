@@ -8,12 +8,19 @@
 > In alternative, it can be used as a standalone module alongside the docker command:  
 > you type `docker-shim ps` or whatever short alias you like and you get structured data. 
 
+---
+
 - [nu-docker-shim](#nu-docker-shim)
   - [Why?](#why?)
-  - [What nu-docker-shim is — and what it isn't](#what-nu-docker-shim-is-—-and-what-it-isn't)
-  - [How the shadowing works](#how-the-shadowing-works)
+  - [What nu-docker-shim is - and what it isn't](#what-nu-docker-shim-is---and-what-it-isn't)
   - [Installation](#installation)
     - [Requirements](#requirements)
+  - [Configuration](#configuration)
+    - [Configure as a module](#configure-as-a-module)
+    - [Configure as a shim](#configure-as-a-shim)
+  - [How nu-docker-shim works as of now](#how-nu-docker-shim-works-as-of-now)
+    - [How the transport works](#how-the-transport-works)
+    - [How the shadowing works](#how-the-shadowing-works)
   - [Differences from docker commands](#differences-from-docker-commands)
     - [Output modes](#output-modes)
     - [Filtering](#filtering)
@@ -62,7 +69,7 @@ docker ps -o wide | where ($it.ports.host_port | any {|p| $p == 5432}) | get nam
 
 ```
 
-## What nu-docker-shim is — and what it isn't
+## What nu-docker-shim is - and what it isn't
 
 **nu-docker-shim is:**
 
@@ -73,10 +80,13 @@ docker ps -o wide | where ($it.ports.host_port | any {|p| $p == 5432}) | get nam
 **It is not:**
 
 - **It's not a docker replacement.** Only the introspection subset above is shadowed. `run`, `build`,
-  `exec`, `logs`, `events`, `pull`/`push`, `compose`, … are **not** — they fall through to real docker.
-- **It is local, unauthenticated daemon only.** No remote `tcp://`/TLS, no `ssh://` contexts. A
-  non-`unix://` `$env.DOCKER_HOST` is a **hard error**.
-- **No native Windows** — Docker Desktop's `npipe://` transport is as of now unreachable from the `http get` command.
+  `exec`, `logs`, `events`, `pull`/`push`, `compose`, … are **not** - they fall through to real docker.
+- **It doesn't re-implement docker's transport or auth.** It delegates them to the `docker` CLI
+  (via a `socat` → `docker system dial-stdio` bridge), so it reaches exactly the daemon `docker`
+  does - local socket, remote `tcp://`+TLS, `ssh://`, Docker Desktop, rootless, per the active
+  `docker context` / `$env.DOCKER_HOST`. It therefore needs the `docker` CLI (and `socat`) present.
+- **No native Windows** - the bridge is driven from `bash`/`socat`, so it runs on Linux and macOS
+  (incl. WSL2), not native Windows.
 
 ## Installation
 
@@ -93,12 +103,12 @@ nu-docker-shim ps
 ### Requirements
 
 - **Nushell 0.114+**
-- A reachable **local Docker daemon**. The socket is `$env.DOCKER_HOST` when it is a `unix://` URL,
-  otherwise the first existing of `/var/run/docker.sock`, `~/.docker/run/docker.sock` (Docker
-  Desktop), and `$XDG_RUNTIME_DIR/docker.sock` (rootless). A non-`unix://` `DOCKER_HOST` errors;
-  remote TCP/TLS and `ssh://` are out of scope.
-- **Unix-socket platforms only — no native Windows.** The module talks to the daemon exclusively
-  over a Unix socket (`http get --unix-socket`), so it runs on **Linux and macOS** (incl. WSL2).
+- The **`docker` CLI** and **`socat`** on `PATH`. Transport is delegated to docker (see
+  [How the transport works](#how-the-transport-works)), so nu-docker-shim works against **any daemon
+  `docker` can reach** - local socket, remote `tcp://`+TLS, `ssh://`, per the active `docker context`
+  - with no socket-path or `DOCKER_HOST` rules of its own. Install socat if missing
+  (`brew install socat`, `apt install socat`, …).
+- **Linux and macOS (incl. WSL2), no native Windows** - the bridge relies on `bash`/`socat`.
 
 ## Configuration 
 
@@ -110,7 +120,7 @@ You type `docker ps`, but you get back Nushell values instead of text.
 When configured as a standalone module it can be used alongside the docker command:  
 `docker ps` will return text, but `docker-shim ps` will return structured data.
 
-Both flavours are the same implementation — just imported differently.
+Both flavours are the same implementation - just imported differently.
 
 ### Configure as a module
 
@@ -153,10 +163,71 @@ docker run -it …    # real docker: falls straight through   (not shadowed)
 docker --version    # real docker: falls straight through
 ```
 
-- **The `*` is required.** Without it the commands land under a `nu-docker-shim shim` namespace — useless.
+- **The `*` is required.** Without it the commands land under a `nu-docker-shim shim` namespace - useless.
 - **Non-shadowed commands keep native completion** from your configured completer.
 
-#### How the shadowing works
+## How nu-docker-shim works as of now
+
+There is **one implementation** - facade-neutral commands like `ps`, `container inspect`,
+`network ls` - behind the two facades you choose at import (module vs shim, see
+[Configuration](#configuration)). Each structured command is a thin wrapper that does three things:
+
+1. **Builds a Docker Engine API request** - the same REST call the `docker` CLI makes internally
+   (`docker ps` → `GET /v1.47/containers/json`), including its query parameters and filters.
+2. **Sends it through the transport** and gets back the raw JSON response from the daemon.
+3. **Shapes that JSON** into typed, queryable columns - the `-o compact|wide|full` levels
+   (see [Output modes](#output-modes)).
+
+```
+docker ps
+  → ps                        builds  GET /v1.47/containers/json?all=…&filters=…
+  → transport                 http get --unix-socket <bridge>  http://localhost/v1.47/containers/json?…
+      → socat  (UNIX-LISTEN, fork)
+          → docker system dial-stdio     ← docker picks & connects the daemon
+              → Docker Engine API            (context / DOCKER_HOST / TLS / ssh)
+  ← JSON  →  shaped into a typed table  (compact | wide | full)
+```
+
+### How the transport works
+
+nu-docker-shim does **not** open the daemon connection itself. It has no code for unix sockets,
+TCP+TLS, `ssh://` tunnels, client certificates, or `docker context` resolution - and that is
+deliberate: this is exactly the transport and authentication logic the `docker` CLI already
+implements. Re-implementing it would be a large, fragile duplication. So instead nu-docker-shim
+**borrows docker's own connection**, in three layers:
+
+- **`docker system dial-stdio`** - a hidden docker subcommand that opens a raw byte stream to
+  *whatever daemon docker would talk to* and pipes it to stdin/stdout. docker does all the work of
+  selecting and connecting the daemon (active `docker context`, `$env.DOCKER_HOST`, TLS certs,
+  `ssh://` tunnels).
+- **`socat`** exposes that stream as an ordinary **local unix socket**:
+  `socat UNIX-LISTEN:<sock>,fork EXEC:'docker system dial-stdio'`. Every connection to `<sock>` forks
+  a fresh `dial-stdio` - i.e. a fresh daemon connection.
+- **Nushell's native `http get --unix-socket <sock>`** speaks the Engine API over that socket.
+  Nushell handles all the HTTP framing (chunked bodies, content-length, JSON decoding); nothing is
+  parsed by hand.
+
+The net effect: **docker owns transport + auth, Nushell owns HTTP, and nu-docker-shim owns neither** -
+so it reaches any daemon `docker` can, local or remote, without a line of transport code of its own.
+
+**Bridge lifecycle.** The bridge is started lazily on the first request and reused after that:
+
+- It is **keyed by target** (`$env.DOCKER_HOST` + `$env.DOCKER_CONTEXT`), so pointing at a different
+  daemon via env spins up a separate bridge. Switching with `docker context use` is picked up
+  automatically - each connection re-execs `dial-stdio`, which re-reads `~/.docker/config.json`.
+- One `socat` per target is shared across commands **and across shells** (like an `ssh`
+  ControlMaster), so the per-request cost is just a native `http get` (~0.1 s). The bridge
+  **lingers until killed or reboot** - there is no idle self-shutdown.
+- Startup is race-free: concurrent first-uses (e.g. `docker stats`, which fans out over containers)
+  coordinate via a lock, and readiness is confirmed by polling `/_ping` before the first real
+  request. A dead or wedged bridge is detected and rebuilt once.
+- The socket lives in `$XDG_RUNTIME_DIR` (falling back to `$TMPDIR`) at mode `0600`; it proxies
+  straight to the daemon, so it is deliberately not world-connectable.
+
+This layering is also why the module needs the `docker` CLI **and** `socat` on `PATH`, and runs on
+Linux/macOS/WSL2 but not native Windows (see [Requirements](#requirements)).
+
+### How the shadowing works
 
 Nushell resolves the **longest matching internal command name** first. The shim exports
 aliases like `docker ps` and `docker container inspect` onto the structured commands.
@@ -177,7 +248,7 @@ through `top`'s ps-args):
 
 | mode | what you get |
 | --- | --- |
-| `compact` | primitive columns only — no nested lists/records. **Default when listing.** |
+| `compact` | primitive columns only - no nested lists/records. **Default when listing.** |
 | `wide` | richer; keeps nested columns (ports, mounts, labels, …). **Default for one object.** |
 | `full` | the raw, unshaped Docker API response. |
 
@@ -222,7 +293,7 @@ docker search nginx --official --stars 100
 | [`docker port`](#docker-port)                           | `nothing -> any`   | Host port mappings published by a container.                            |
 | [`docker ps`](#docker-ps)                               | `nothing -> any`   | List containers as structured, typed rows.                              |
 | [`docker search`](#docker-search)                       | `nothing -> any`   | Search Docker Hub for images.                                           |
-| [`docker stats`](#docker-stats)                         | `nothing -> any`   | Per-container CPU / memory / PID usage — a one-shot snapshot.         |
+| [`docker stats`](#docker-stats)                         | `nothing -> any`   | Per-container CPU / memory / PID usage - a one-shot snapshot.         |
 | [`docker system df`](#docker-system-df)                 | `nothing -> any`   | Disk-usage summary across images, containers, volumes, and build cache. |
 | [`docker top`](#docker-top)                             | `nothing -> table` | List the processes running inside a container.                          |
 | [`docker version`](#docker-version)                     | `nothing -> any`   | Daemon (server-side) version details (the `GET /version` record).       |
@@ -234,8 +305,8 @@ docker search nginx --official --stars 100
 Inspect one or more containers in full detail.
 
 Exact wrapper of `docker container inspect`. Returns the curated per-container  
-detail record — config, state, mounts, connected networks, env, labels, and the  
-port map as typed `{host_ip, host_port, container_port, proto}` records — or the  
+detail record - config, state, mounts, connected networks, env, labels, and the  
+port map as typed `{host_ip, host_port, container_port, proto}` records - or the  
 raw API response with `-o full`. A single ref returns one record; multiple refs  
 return a list of records.
 
@@ -341,9 +412,9 @@ docker history nginx | get size | math sum
 
 Inspect one or more images in full detail.
 
-Exact wrapper of `docker image inspect`. Returns the curated per-image detail —  
+Exact wrapper of `docker image inspect`. Returns the curated per-image detail -  
 repo tags/digests, os/architecture, config (cmd, entrypoint, env, exposed ports),  
-and labels — or the raw API response with `-o full`. A single ref returns one  
+and labels - or the raw API response with `-o full`. A single ref returns one  
 record; multiple refs return a list.
 
 **Signature:** `nothing -> any`
@@ -463,7 +534,7 @@ network -> volume in turn and returns the same curated detail as the matching
 `docker <type> inspect`. Anything else docker can inspect (plugins, swarm  
 objects, …) falls back to `^docker inspect` parsed into a structured record.  
 A single ref returns one record; multiple refs return a list. Prefer the  
-type-specific commands when you know the type — they also complete the ref.
+type-specific commands when you know the type - they also complete the ref.
 
 **Signature:** `nothing -> any`
 
@@ -499,7 +570,7 @@ docker inspect redis -o full
 Inspect one or more networks in full detail.
 
 Exact wrapper of `docker network inspect`. Returns the curated per-network detail  
-— driver, scope, subnets/gateways, attached containers, options, labels — or the  
+- driver, scope, subnets/gateways, attached containers, options, labels - or the  
 raw API response with `-o full`. A single ref returns one record; multiple refs  
 return a list.
 
@@ -616,7 +687,7 @@ docker port nginx | get host_port
 
 List containers as structured, typed rows.
 
-Exact wrapper of `docker ps` — shadows the real subcommand and returns a  
+Exact wrapper of `docker ps` - shadows the real subcommand and returns a  
 queryable table instead of text: `created` is a `datetime`, `ports` a list of  
 `{host_ip, host_port, container_port, proto}` records, and the human `status`  
 string is decomposed into `state`, `health`, and `exit_code`. Bare it lists  
@@ -678,7 +749,7 @@ docker ps --label com.docker.compose.project=mole,com.docker.compose.service=db
 
 Search Docker Hub for images.
 
-Exact wrapper of `docker search` — the one shadowed command that hits the  
+Exact wrapper of `docker search` - the one shadowed command that hits the  
 network (Docker Hub) rather than the local daemon. Rows are  
 `{name, stars, official, description}`, sorted by stars descending.
 
@@ -716,11 +787,11 @@ docker search postgres --official --stars 100 --limit 10
 
 ### `docker stats`
 
-Per-container CPU / memory / PID usage — a one-shot snapshot.
+Per-container CPU / memory / PID usage - a one-shot snapshot.
 
 Exact wrapper of `docker stats`, always one-shot (never a live stream). With no  
 arguments it covers every running container; `--all` includes stopped ones. CPU%  
-is computed from the single sample the daemon returns — it waits two cycles  
+is computed from the single sample the daemon returns - it waits two cycles  
 server-side so `precpu` is populated. Targets are queried concurrently. `mem`  
 and `limit` are `filesize`; `cpu%`/`mem%` are rounded floats; `pids` an int.
 
@@ -759,7 +830,7 @@ docker stats | sort-by mem --reverse | select name mem "mem%"
 Disk-usage summary across images, containers, volumes, and build cache.
 
 Exact wrapper of `docker system df`. One row per resource type with `total`,  
-`active`, and reclaimable `size` (a `filesize`) — the structured equivalent of  
+`active`, and reclaimable `size` (a `filesize`) - the structured equivalent of  
 the CLI's summary table.
 
 **Signature:** `nothing -> any`
@@ -820,7 +891,7 @@ docker top redis | select PID CMD
 
 Daemon (server-side) version details (the `GET /version` record).
 
-Exact wrapper of `docker version` — server side only (no client section). The  
+Exact wrapper of `docker version` - server side only (no client section). The  
 record is uncurated, so `wide` == `full`; `compact` keeps only scalar fields.
 
 **Signature:** `nothing -> any`
@@ -847,8 +918,8 @@ docker version | get ApiVersion
 
 Inspect one or more volumes in full detail.
 
-Exact wrapper of `docker volume inspect`. Returns the curated per-volume detail —  
-driver, scope, mountpoint, `created` (`datetime`), options, labels — or the raw  
+Exact wrapper of `docker volume inspect`. Returns the curated per-volume detail -  
+driver, scope, mountpoint, `created` (`datetime`), options, labels - or the raw  
 API response with `-o full`. A single ref returns one record; multiple refs  
 return a list.
 

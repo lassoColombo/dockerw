@@ -1,4 +1,4 @@
-# Network commands — exact wrappers of `docker network ls` / `docker network inspect`.
+# Network commands - exact wrappers of `docker network ls` / `docker network inspect`.
 # Same flags as docker; structured output. `--output (-o) compact|wide|full` is a
 # nu-docker-shim-specific addition.
 use client.nu
@@ -81,7 +81,7 @@ export def "network ls" [
 # Inspect one or more networks in full detail.
 #
 # Exact wrapper of `docker network inspect`. Returns the curated per-network detail
-# — driver, scope, subnets/gateways, attached containers, options, labels — or the
+# - driver, scope, subnets/gateways, attached containers, options, labels - or the
 # raw API response with `-o full`. A single ref returns one record; multiple refs
 # return a list.
 @search-terms inspect network detail subnet gateway containers

@@ -28,7 +28,7 @@ def main [] {
   # Generate GET-only for the resource families the wrapper covers. `--tags`
   # drops everything else (swarm, plugins, exec, distribution, …). A few
   # endpoints that share these tags (logs, export, archive, attach-ws, image
-  # export, ping, events) are still generated but left unwrapped by mod.nu —
+  # export, ping, events) are still generated but left unwrapped by mod.nu -
   # the generator has no per-operation filter to exclude them.
   (nu-http-client-generator $spec
     --output $out
@@ -46,7 +46,7 @@ def main [] {
   # straight from the spec, and Nushell *runtime-enforces* a command's declared
   # output type. But Docker's live responses routinely drift from the spec schema
   # (extra/missing fields, looser nullability), so an otherwise-valid response
-  # fails the type check — `GET /system/df` is one example. The `nu-docker-shim` wrapper
+  # fails the type check - `GET /system/df` is one example. The `nu-docker-shim` wrapper
   # re-types every result itself, so the client's static types add fragility
   # without value. We rewrite only the public command signature terminators
   # (lines of the form `]: <in> -> <out> {`); helper defs are untouched.
@@ -59,4 +59,30 @@ def main [] {
   $relaxed | save --force $out
   let n = ($relaxed | lines | where {|l| $l =~ '^\]: (nothing|any) -> any \{$'} | length)
   print $"done: ($relaxed | lines | length) lines, ($n) commands relaxed to `-> any`"
+
+  # Delegate transport to the docker CLI.
+  #
+  # The generator emits `send-get` as an `http get` over the request's unix socket.
+  # We repoint that `http get` at a socat bridge to `docker system dial-stdio`
+  # (see transport.nu) via `transport bridge-socket`, so docker owns context / TLS /
+  # ssh / auth while nushell's native HTTP client still handles all framing - no
+  # hand-rolled HTTP. Also inject `use transport.nu`. Both edits are line-anchored
+  # and applied to the freshly generated file, so they are stable across regens.
+  # Done per-line so the replacement is a literal string: `str replace --regex`
+  # would treat the `$req`/`$raw` in the new line as capture-group references and
+  # silently eat them.
+  let patched = (
+    open --raw $out
+    | lines
+    | each {|l|
+        if ($l | str starts-with 'const BASE_URL') {
+          $"use transport.nu\n\n($l)"
+        } else if ($l =~ '^\s*let resp = if \(\$req\.unix_socket') {
+          '  let resp = (transport request $req.url $req.headers $raw $req.timeout)'
+        } else { $l }
+      }
+    | str join "\n"
+  )
+  $patched | save --force $out
+  print "patched: send-get transport -> socat bridge over `docker system dial-stdio` (transport.nu)"
 }

@@ -2,6 +2,8 @@
 # Source: /Users/colombos/projects/personal/nushell/modules/nu-docker-shim/spec/docker.swagger.yaml
 # Auth: --token flag or $env.DOCKER_ENGINE_API_TOKEN
 
+use transport.nu
+
 const BASE_URL = "http://localhost/v1.47"
 const UNIX_SOCKET = "/var/run/docker.sock"
 
@@ -59,8 +61,8 @@ def encode-path-array [v: any]: nothing -> string {
 # Build the request URL from base, path, and any number of pre-encoded query
 # fragments (param serializer output and/or the auth query). Each fragment is an
 # `&`-joinable `key=value` string already percent-encoded by its producer; empty
-# fragments are dropped. `url parse`/`url join` own the `?`/`&` structure — no
-# delimiters are hand-spliced — and any query already on the base URL is merged in.
+# fragments are dropped. `url parse`/`url join` own the `?`/`&` structure - no
+# delimiters are hand-spliced - and any query already on the base URL is merged in.
 def build-url [base: string, path: string, ...query_parts: string]: nothing -> string {
   let parsed = ($base | url parse | reject params)
   let full_path = if ($path | is-empty) { $parsed.path } else { [$parsed.path $path] | str join "/" | str replace --all --regex '/+' '/' }
@@ -86,9 +88,9 @@ def handle-response [allow_errors: bool, full: bool, ok_codes: list<int>]: recor
   $resp.body
 }
 
-# GET — bodyless, honours --raw
+# GET - bodyless, honours --raw
 def send-get [req: record, insecure: bool, raw: bool, allow_errors: bool, full: bool, ok_codes: list<int>]: nothing -> any {
-  let resp = if ($req.unix_socket | is-empty) { http get --headers $req.headers --full --allow-errors --max-time $req.timeout --insecure=$insecure --raw=$raw $req.url } else { http get --headers $req.headers --full --allow-errors --max-time $req.timeout --insecure=$insecure --raw=$raw --unix-socket $req.unix_socket $req.url }
+  let resp = (transport request $req.url $req.headers $raw $req.timeout)
   $resp | handle-response $allow_errors $full $ok_codes
 }
 

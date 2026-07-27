@@ -1,4 +1,4 @@
-# Container commands — exact wrappers of `docker ps`, `docker container inspect`,
+# Container commands - exact wrappers of `docker ps`, `docker container inspect`,
 # `docker stats`, `docker top`, `docker diff`. Same flags as docker; the output
 # is structured/typed instead of text. `--output (-o) compact|wide|full` is a
 # nu-docker-shim-specific addition on `ps` / `container inspect` (docker has no such
@@ -67,7 +67,7 @@ def shape-container-detail [c: record]: nothing -> record {
 
 # List containers as structured, typed rows.
 #
-# Exact wrapper of `docker ps` — shadows the real subcommand and returns a
+# Exact wrapper of `docker ps` - shadows the real subcommand and returns a
 # queryable table instead of text: `created` is a `datetime`, `ports` a list of
 # `{host_ip, host_port, container_port, proto}` records, and the human `status`
 # string is decomposed into `state`, `health`, and `exit_code`. Bare it lists
@@ -124,8 +124,8 @@ export def "ps" [
 # Inspect one or more containers in full detail.
 #
 # Exact wrapper of `docker container inspect`. Returns the curated per-container
-# detail record — config, state, mounts, connected networks, env, labels, and the
-# port map as typed `{host_ip, host_port, container_port, proto}` records — or the
+# detail record - config, state, mounts, connected networks, env, labels, and the
+# port map as typed `{host_ip, host_port, container_port, proto}` records - or the
 # raw API response with `-o full`. A single ref returns one record; multiple refs
 # return a list of records.
 @search-terms inspect container detail config mounts networks env
@@ -147,11 +147,11 @@ export def "container inspect" [
   }
 }
 
-# Per-container CPU / memory / PID usage — a one-shot snapshot.
+# Per-container CPU / memory / PID usage - a one-shot snapshot.
 #
 # Exact wrapper of `docker stats`, always one-shot (never a live stream). With no
 # arguments it covers every running container; `--all` includes stopped ones. CPU%
-# is computed from the single sample the daemon returns — it waits two cycles
+# is computed from the single sample the daemon returns - it waits two cycles
 # server-side so `precpu` is populated. Targets are queried concurrently. `mem`
 # and `limit` are `filesize`; `cpu%`/`mem%` are rounded floats; `pids` an int.
 @search-terms stats cpu memory ram usage load pids

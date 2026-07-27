@@ -1,4 +1,4 @@
-# System commands — exact wrappers of `docker info`, `docker version`, `docker system df`.
+# System commands - exact wrappers of `docker info`, `docker version`, `docker system df`.
 # Same flags as docker; structured output.
 use client.nu
 use common.nu
@@ -21,7 +21,7 @@ export def "info" [
 
 # Daemon (server-side) version details (the `GET /version` record).
 #
-# Exact wrapper of `docker version` — server side only (no client section). The
+# Exact wrapper of `docker version` - server side only (no client section). The
 # record is uncurated, so `wide` == `full`; `compact` keeps only scalar fields.
 @search-terms version api build server engine
 @example "version details" { docker version }
@@ -36,7 +36,7 @@ export def "version" [
 # Disk-usage summary across images, containers, volumes, and build cache.
 #
 # Exact wrapper of `docker system df`. One row per resource type with `total`,
-# `active`, and reclaimable `size` (a `filesize`) — the structured equivalent of
+# `active`, and reclaimable `size` (a `filesize`) - the structured equivalent of
 # the CLI's summary table.
 @search-terms system df disk usage space reclaim prune
 @example "disk-usage summary" { docker system df }

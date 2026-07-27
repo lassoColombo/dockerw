@@ -3,9 +3,9 @@
 #
 # This is the single source of truth for the command set. The two public facades
 # are thin wrappers over it:
-#   mod.nu   the standalone module (default import) — `nu-docker-shim ps`, and the
+#   mod.nu   the standalone module (default import) - `nu-docker-shim ps`, and the
 #            nested `shim` submodule
-#   shim.nu  the docker-shadowing facade — `docker ps`, … via aliases onto these
+#   shim.nu  the docker-shadowing facade - `docker ps`, … via aliases onto these
 #
 # Never `use` this file directly; import one of the facades. See mod.nu's header.
 
@@ -24,7 +24,7 @@ export use system.nu *
 # `<type> inspect`. Anything else docker can inspect (plugins, swarm objects, …)
 # falls back to `^docker inspect` parsed into a structured record. A single ref
 # returns one record; multiple refs return a list. Prefer the type-specific
-# commands when you know the type — they also complete the ref.
+# commands when you know the type - they also complete the ref.
 @search-terms inspect detail object generic auto-detect
 @example "inspect whatever this ref is" { docker inspect redis }
 @example "mix types in one call" { docker inspect redis postgres:16 bridge }

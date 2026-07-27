@@ -1,4 +1,4 @@
-# SHIM facade — shadows the matching `docker …` subcommands with the structured
+# SHIM facade - shadows the matching `docker …` subcommands with the structured
 # core commands. Load with the `*` so the defs enter scope unprefixed:
 #
 #     use nu-docker-shim shim *
@@ -7,11 +7,11 @@
 #
 # Nushell resolves the longest internal command name first, so every `docker …`
 # command NOT listed below (run, build, logs, exec, pull, …) falls through to the
-# external `docker` untouched — with its own native completion (carapace, …).
+# external `docker` untouched - with its own native completion (carapace, …).
 #
 # These are `export alias`es onto the core commands (imported prefixed, so the
 # core names stay internal and never leak into your scope). Aliases inherit the
-# target def's full signature, flags, and custom completers — so
+# target def's full signature, flags, and custom completers - so
 # `docker ps --status <TAB>` completes natively. Each docker spelling maps
 # straight to its canonical core command (no alias-to-alias chains).
 

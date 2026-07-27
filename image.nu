@@ -1,4 +1,4 @@
-# Image commands — exact wrappers of `docker images`, `docker image inspect`,
+# Image commands - exact wrappers of `docker images`, `docker image inspect`,
 # `docker history`, `docker search`. Same flags as docker; structured output.
 # `--output (-o) compact|wide|full` is a nu-docker-shim-specific addition on the two
 # resource commands (`images` / `image inspect`).
@@ -17,7 +17,7 @@ def complete-image-label [context: string] {
 
 # --- shapers ---
 
-# Shape rows of the image LIST endpoint — one row per repository:tag.
+# Shape rows of the image LIST endpoint - one row per repository:tag.
 def shape-image-summary [img: record, full_id: bool, with_digest: bool]: nothing -> list {
   let repo_tags = ($img.RepoTags? | default [])
   let tags = if ($repo_tags | is-empty) { ["<none>:<none>"] } else { $repo_tags }
@@ -98,9 +98,9 @@ export def "images" [
 
 # Inspect one or more images in full detail.
 #
-# Exact wrapper of `docker image inspect`. Returns the curated per-image detail —
+# Exact wrapper of `docker image inspect`. Returns the curated per-image detail -
 # repo tags/digests, os/architecture, config (cmd, entrypoint, env, exposed ports),
-# and labels — or the raw API response with `-o full`. A single ref returns one
+# and labels - or the raw API response with `-o full`. A single ref returns one
 # record; multiple refs return a list.
 @search-terms inspect image detail config layers digest
 @example "inspect an image" { docker image inspect postgres:16 }
@@ -150,7 +150,7 @@ export def "history" [
 
 # Search Docker Hub for images.
 #
-# Exact wrapper of `docker search` — the one shadowed command that hits the
+# Exact wrapper of `docker search` - the one shadowed command that hits the
 # network (Docker Hub) rather than the local daemon. Rows are
 # `{name, stars, official, description}`, sorted by stars descending.
 @search-terms search hub find registry stars official

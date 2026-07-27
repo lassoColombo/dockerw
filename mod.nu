@@ -1,21 +1,21 @@
-# nu-docker-shim — structured, read-only Docker introspection for Nushell.
+# nu-docker-shim - structured, read-only Docker introspection for Nushell.
 #
 # Wraps a subset of docker's introspection subcommands with exact wrappers that
 # return structured, typed, queryable data instead of text. The same
-# implementation (core.nu) is exposed through two facades — pick one at import:
+# implementation (core.nu) is exposed through two facades - pick one at import:
 #
-#   STANDALONE (default) — commands live under the module name, alongside real docker:
+#   STANDALONE (default) - commands live under the module name, alongside real docker:
 #       use nu-docker-shim          # -> `nu-docker-shim ps`, `nu-docker-shim volume ls`, …
 #       module ds { export use nu-docker-shim * }   # rename the prefix to taste
 #       use ds                      # -> `ds ps`, `ds volume ls`, …
-#     Real `docker …` is untouched — this flavour sits beside it, it does not shadow it.
+#     Real `docker …` is untouched - this flavour sits beside it, it does not shadow it.
 #
-#   SHIM — shadows the matching docker subcommands (load with `*`, unprefixed):
+#   SHIM - shadows the matching docker subcommands (load with `*`, unprefixed):
 #       use nu-docker-shim shim *   # -> `docker ps`, `docker volume ls`, … override real docker
 #     Every OTHER `docker …` command (run, build, logs, exec, …) falls straight
 #     through to the native binary, untouched. See shim.nu.
 #
-# Shadowed / wrapped (structured) commands — docker's flags that actually do
+# Shadowed / wrapped (structured) commands - docker's flags that actually do
 # something here are kept; flags with no effect on structured output (--format, …)
 # are dropped. Standalone names shown; the shim prefixes each with `docker `:
 #   ps · container inspect · stats · top · diff · port
@@ -30,7 +30,7 @@
 #   wide     richer, may include nested columns     [default for one object]
 #   full     the raw, unshaped Docker API response
 #
-# Filters are exposed as discrete, completable flags — Nushell can only complete
+# Filters are exposed as discrete, completable flags - Nushell can only complete
 # scalar flag values, never inside a `{record}`/`[list]` literal, so a flag per
 # key is the only shape that completes (many with live socket-backed values:
 # `--network`, `--volume`, `--ancestor`, `--name`, …). `ps --status running
