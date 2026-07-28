@@ -1,23 +1,8 @@
-//! `nude system` — singleton daemon introspection: `info` / `version`.
-//!
-//! A different shape from the list+inspect resources: no name positional, no
-//! filters, no inspect fan-out, no labels. Each command fetches one singleton
-//! from the daemon and projects it by output format; only `-o compact|wide|full`
-//! is shared with the resource commands (via [`scaffold::singleton_signature`]).
-//! Data source per command:
-//! - `info`    → `SystemInfo`: compact is the `docker info` headline, wide adds
-//!   drivers / flags / security options / warnings, full is the raw payload.
-//! - `version` → `SystemVersion`: compact is the server-version summary, wide
-//!   adds the component breakdown, full is raw.
-//!
-//! `df` is intentionally absent: bollard 0.21's `SystemDataUsageResponse` models
-//! a *future* API shape (`ImageUsage`/… computed server-side) that real daemons
-//! don't return — they still send the classic `{LayersSize, Images[], …}` — and
-//! bollard exposes no raw path to that payload. Deferred; see list.yaml.
-
 use bollard::models::{SystemInfo, SystemVersion};
 use nu_plugin::{DynamicCompletionCall, EngineInterface, EvaluatedCall, SimplePluginCommand};
-use nu_protocol::{DynamicSuggestion, LabeledError, Record, Signature, Span, Value, engine::ArgType};
+use nu_protocol::{
+    engine::ArgType, DynamicSuggestion, LabeledError, Record, Signature, Span, Value,
+};
 
 use crate::completers;
 use crate::helpers::{
@@ -27,8 +12,6 @@ use crate::output::OutputFormat;
 use crate::plugin::NudePlugin;
 use crate::scaffold;
 
-/// `-o`/`--output` completion — the only completable flag the singleton system
-/// commands have. Shared by all three.
 fn output_completion(arg_type: ArgType) -> Option<Vec<DynamicSuggestion>> {
     match arg_type {
         ArgType::Flag(name) if matches!(name.as_ref(), "output" | "o") => {
@@ -37,10 +20,6 @@ fn output_completion(arg_type: ArgType) -> Option<Vec<DynamicSuggestion>> {
         _ => None,
     }
 }
-
-// ===========================================================================
-// info
-// ===========================================================================
 
 pub struct SystemInfoCommand;
 
@@ -71,7 +50,10 @@ impl SimplePluginCommand for SystemInfoCommand {
         plugin.block_on_labeled(run_info(plugin, call))
     }
 
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         _plugin: &Self::Plugin,
@@ -95,9 +77,6 @@ async fn run_info(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<V
     })
 }
 
-/// The `docker info` projection. `wide` appends drivers, host flags, security
-/// options and warnings; deeply nested sub-structs (plugins, runtimes map,
-/// registry config, swarm) are left to `full`.
 fn info_record(i: &SystemInfo, span: Span, wide: bool) -> Value {
     let mut rec = Record::new();
     rec.push("name", str_opt(i.name.as_deref(), span));
@@ -108,38 +87,49 @@ fn info_record(i: &SystemInfo, span: Span, wide: bool) -> Value {
     rec.push("containers_stopped", opt_int(i.containers_stopped, span));
     rec.push("images", opt_int(i.images, span));
     rec.push("driver", str_opt(i.driver.as_deref(), span));
-    rec.push("operating_system", str_opt(i.operating_system.as_deref(), span));
+    rec.push(
+        "operating_system",
+        str_opt(i.operating_system.as_deref(), span),
+    );
     rec.push("os_type", str_opt(i.os_type.as_deref(), span));
     rec.push("architecture", str_opt(i.architecture.as_deref(), span));
     rec.push("kernel_version", str_opt(i.kernel_version.as_deref(), span));
     rec.push("ncpu", opt_int(i.ncpu, span));
     rec.push("mem_total", opt_filesize(i.mem_total, span));
     if wide {
-        rec.push("docker_root_dir", str_opt(i.docker_root_dir.as_deref(), span));
+        rec.push(
+            "docker_root_dir",
+            str_opt(i.docker_root_dir.as_deref(), span),
+        );
         rec.push("logging_driver", str_opt(i.logging_driver.as_deref(), span));
         rec.push("cgroup_driver", enum_opt(i.cgroup_driver.as_ref(), span));
         rec.push("cgroup_version", enum_opt(i.cgroup_version.as_ref(), span));
-        rec.push("default_runtime", str_opt(i.default_runtime.as_deref(), span));
+        rec.push(
+            "default_runtime",
+            str_opt(i.default_runtime.as_deref(), span),
+        );
         rec.push("live_restore", opt_bool(i.live_restore_enabled, span));
         rec.push("debug", opt_bool(i.debug, span));
         rec.push("experimental", opt_bool(i.experimental_build, span));
-        rec.push("index_server", str_opt(i.index_server_address.as_deref(), span));
-        rec.push("security_options", str_list(i.security_options.as_ref(), span));
+        rec.push(
+            "index_server",
+            str_opt(i.index_server_address.as_deref(), span),
+        );
+        rec.push(
+            "security_options",
+            str_list(i.security_options.as_ref(), span),
+        );
         rec.push("warnings", str_list(i.warnings.as_ref(), span));
         rec.push("labels", str_list(i.labels.as_ref(), span));
     }
     Value::record(rec, span)
 }
 
-// ===========================================================================
-// version
-// ===========================================================================
+pub struct VersionCommand;
 
-pub struct SystemVersionCommand;
+const VERSION_NAME: &str = "nude version";
 
-const VERSION_NAME: &str = "nude system version";
-
-impl SimplePluginCommand for SystemVersionCommand {
+impl SimplePluginCommand for VersionCommand {
     type Plugin = NudePlugin;
 
     fn name(&self) -> &str {
@@ -164,7 +154,10 @@ impl SimplePluginCommand for SystemVersionCommand {
         plugin.block_on_labeled(run_version(plugin, call))
     }
 
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         _plugin: &Self::Plugin,
@@ -188,14 +181,15 @@ async fn run_version(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Resul
     })
 }
 
-/// The `docker version` (server) projection. `wide` adds `min_api_version` and
-/// the component breakdown (Engine, containerd, runc, docker-init).
 fn version_record(v: &SystemVersion, span: Span, wide: bool) -> Value {
     let mut rec = Record::new();
     rec.push("version", str_opt(v.version.as_deref(), span));
     rec.push("api_version", str_opt(v.api_version.as_deref(), span));
     if wide {
-        rec.push("min_api_version", str_opt(v.min_api_version.as_deref(), span));
+        rec.push(
+            "min_api_version",
+            str_opt(v.min_api_version.as_deref(), span),
+        );
     }
     rec.push("os", str_opt(v.os.as_deref(), span));
     rec.push("arch", str_opt(v.arch.as_deref(), span));
@@ -210,7 +204,6 @@ fn version_record(v: &SystemVersion, span: Span, wide: bool) -> Value {
     Value::record(rec, span)
 }
 
-/// The version components as a list of `{name, version}` records.
 fn components_value(v: &SystemVersion, span: Span) -> Value {
     let rows = v
         .components

@@ -1,3 +1,4 @@
+pub mod aliases;
 pub mod container;
 pub mod detail;
 pub mod image;

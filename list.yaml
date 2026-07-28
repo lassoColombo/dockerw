@@ -5,48 +5,63 @@
 # .claude/skills/add-nude-resource. `container` is the reference impl.
 #
 # Per entry:
-#   list_fn / inspect_fn — bollard 0.21 methods backing compact vs wide/full
-#   same_type            — true only when inspect_fn returns the SAME struct as
+#   list_fn / inspect_fn - bollard 0.21 methods backing compact vs wide/full
+#   same_type            - true only when inspect_fn returns the SAME struct as
 #                          list_fn (⇒ wide needs no fan-out). VERIFY against the
-#                          real bollard return type — the names mislead:
+#                          real bollard return type - the names mislead:
 #                          inspect_network returns NetworkInspect, a distinct
 #                          SUPERSET of Network, so network needs the fan-out too;
 #                          inspect_volume returns the very same Volume, so volume
 #                          does not. The un-implemented entries' same_type below
-#                          are UNVERIFIED guesses — check before coding.
-#   filters              — Docker Engine API filter keys, one typed flag each
+#                          are UNVERIFIED guesses - check before coding.
+#   filters              - Docker Engine API filter keys, one typed flag each
 #                          (skill §4). `label` is always the --labels comma flag.
-#   labels               — has a label map ⇒ gets the --show-labels decorator
-#   compact_notes        — the typing-contract work (skill §3): split/type these
+#   labels               - has a label map ⇒ gets the --show-labels decorator
+#   compact_notes        - the typing-contract work (skill §3): split/type these
 
 # === all four core, always-present resources are implemented ==================
 done:
   - name: container
-    list_fn: list_containers      # ContainerSummary
+    list_fn: list_containers # ContainerSummary
     inspect_fn: inspect_container # ContainerInspectResponse
     same_type: false
-    filters: [status, health, exited, ancestor, before, since, name, id,
-              network, volume, publish, expose, labels, is-task]
+    filters:
+      [
+        status,
+        health,
+        exited,
+        ancestor,
+        before,
+        since,
+        name,
+        id,
+        network,
+        volume,
+        publish,
+        expose,
+        labels,
+        is-task,
+      ]
     labels: true
 
-  - name: image                   # ✅ implemented — richest: fan-out + row-explode
-    list_fn: list_images          # ImageSummary
-    inspect_fn: inspect_image     # ImageInspect (distinct, richer) → fan out, like container
+  - name: image # ✅ implemented - richest: fan-out + row-explode
+    list_fn: list_images # ImageSummary
+    inspect_fn: inspect_image # ImageInspect (distinct, richer) → fan out, like container
     same_type: false
-    filters: [reference, before, since, dangling, labels]   # no id — the name arg takes ref or id
+    filters: [reference, before, since, dangling, labels] # no id - the name arg takes ref or id
     labels: true
     compact_notes: >
       compact EXPLODES each image into one row per repo:tag (split_ref: split at
       the last colon; `<none>`→nothing; an untagged image → one dangling row) so
-      cells stay primitive — matches `docker images`. id: strip `sha256:` +
+      cells stay primitive - matches `docker images`. id: strip `sha256:` +
       short_id. size: Value::filesize; created: epoch → epoch_date. wide (fan-out)
       is one row per image with list columns via str_list (repo_tags, env, layers,
       cmd, entrypoint, exposed_ports).
 
-  - name: network                 # ✅ implemented — the 2nd reference resource
-    list_fn: list_networks        # Network
-    inspect_fn: inspect_network   # NetworkInspect (distinct SUPERSET of Network)
-    same_type: false              # ⇒ fan out inspect for wide/full, like container
+  - name: network # ✅ implemented - the 2nd reference resource
+    list_fn: list_networks # Network
+    inspect_fn: inspect_network # NetworkInspect (distinct SUPERSET of Network)
+    same_type: false # ⇒ fan out inspect for wide/full, like container
     filters: [driver, id, name, scope, type, dangling, labels]
     labels: true
     compact_notes: >
@@ -55,29 +70,29 @@ done:
       features → reuse opt_rfc3339 (NO opt_bollard_date after all). wide adds the
       ipam record {driver, config:[{subnet,gateway,ip_range}]}, options record,
       and connected containers [{name,ipv4,ipv6,mac}]. No enable_ipv6 field on
-      Network in this stub — dropped from compact.
+      Network in this stub - dropped from compact.
 
-  - name: volume                  # ✅ implemented — first true same_type resource
-    list_fn: list_volumes         # Volume (via VolumeListResponse.volumes)
-    inspect_fn: inspect_volume    # Volume — the SAME struct as the list element
-    same_type: true               # ⇒ NO inspect fan-out; wide projects more of the same Volume
-    filters: [driver, name, dangling, labels]   # no id — volumes are keyed by name
+  - name: volume # ✅ implemented - first true same_type resource
+    list_fn: list_volumes # Volume (via VolumeListResponse.volumes)
+    inspect_fn: inspect_volume # Volume - the SAME struct as the list element
+    same_type: true # ⇒ NO inspect fan-out; wide projects more of the same Volume
+    filters: [driver, name, dangling, labels] # no id - volumes are keyed by name
     labels: true
     compact_notes: >
       compact: name, driver, scope(VolumeScopeEnum → enum_opt; EMPTY→nothing),
       created(created_at: BollardDate = RFC3339 String → opt_rfc3339). wide adds
-      mountpoint, options record, and usage size(→opt_filesize)/refs(→opt_int) —
+      mountpoint, options record, and usage size(→opt_filesize)/refs(→opt_int) -
       usage is null unless the daemon computed it (docker system df), reported as
       nothing not 0. `status`/`cluster_volume` are opaque → full only.
 
-# === system: singleton daemon introspection — a DIFFERENT shape ===============
+# === system: singleton daemon introspection - a DIFFERENT shape ===============
 # NOT list+inspect: no name positional, no filters, no inspect fan-out, no
 # labels. Each command projects ONE singleton endpoint by -o compact|wide|full.
 # Lives in src/commands/system.rs; signature via scaffold::singleton_signature
 # (only the -o flag + docker category are shared with the resource commands).
 system:
-  - name: system info             # ✅ implemented
-    source_fn: info               # SystemInfo (61 fields)
+  - name: system info # ✅ implemented
+    source_fn: info # SystemInfo (61 fields)
     compact_notes: >
       compact = the `docker info` headline (~14 primitives: name, server_version,
       container counts, images, driver, operating_system, os_type, architecture,
@@ -87,16 +102,16 @@ system:
       security_options/warnings/labels (str_list). full = raw SystemInfo. Deeply
       nested sub-structs (plugins, runtimes map, registry_config, swarm) → full only.
 
-  - name: system version          # ✅ implemented
-    source_fn: version            # SystemVersion
+  - name: version # ✅ implemented (top-level `nude version`, like docker)
+    source_fn: version # SystemVersion
     compact_notes: >
       compact = server-version summary (version, api_version, os, arch,
       kernel_version, go_version, git_commit, build_time→opt_rfc3339,
       experimental→bool). wide adds min_api_version + components[{name,version}].
       full = raw. Output is a single record, not a list (it's one singleton).
 
-  - name: system df               # ⛔ DEFERRED (2026-07) — bollard can't return usable data
-    source_fn: df                 # SystemDataUsageResponse — BROKEN against real daemons
+  - name: system df # ⛔ DEFERRED (2026-07) - bollard can't return usable data
+    source_fn: df # SystemDataUsageResponse - BROKEN against real daemons
     deferred: true
     reason: >
       bollard 0.21's SystemDataUsageResponse models a FUTURE API shape
@@ -111,49 +126,49 @@ system:
       structs + CLI-style aggregation (active = in-use count; size/reclaimable
       per type; images use LayersSize and Size−SharedSize for the in-use total).
 
-# === registry search: the one OUTWARD-facing command — a DIFFERENT shape =======
-# Not local introspection: `nude image search <term>` queries Docker Hub (the
+# === registry search: the one OUTWARD-facing command - a DIFFERENT shape =======
+# Not local introspection: `nude search <term>` queries Docker Hub (the
 # daemon proxies GET /images/search to the registry). Read-only, but the data is
 # NOT reproducible (changes with Hub, needs network). No inspect (a hit is just
 # metadata), and the term is a required positional. Lives in src/commands/search.rs;
 # signature via scaffold::search_signature. Broadened nude's charter from "local
 # introspection" to "read-only Docker queries".
 registry_search:
-  - name: image search            # ✅ implemented & verified (exact parity vs `docker search`)
-    search_fn: search_images      # Vec<ImageSearchResponseItem>
+  - name: search # ✅ implemented & verified (top-level `nude search`; parity vs `docker search`)
+    search_fn: search_images # Vec<ImageSearchResponseItem>
     filters: [stars, is-official]
     #   stars → int (at least N).  official → SWITCH, API key `is-official` (flag≠key,
     #     written as a FilterArg literal). is-automated OMITTED: Docker Hub removed
     #     automated builds in 2023 (the filter/column is always false).
-    #   NOTE: `stars` interacts with `--limit` — Hub filters within the limit window,
+    #   NOTE: `stars` interacts with `--limit` - Hub filters within the limit window,
     #     so counts match `docker search` only at the SAME --limit (default 25, max 100).
     labels: false
     compact_notes: >
       compact/wide: name, description, stars(star_count→int), official(is_official→bool)
-      — mirrors `docker search`. Results kept in Hub relevance order (the user sorts).
+      - mirrors `docker search`. Results kept in Hub relevance order (the user sorts).
       full = raw item, which also carries the dead is_automated. --limit (default 25).
 
-# === per-object detail sub-verbs: drill into ONE object — a DIFFERENT shape ====
+# === per-object detail sub-verbs: drill into ONE object - a DIFFERENT shape ====
 # Not list+inspect: each takes a REQUIRED object ref and returns one focused, typed
-# view — no list, no filters, no fan-out. Lives in src/commands/detail.rs; signature
+# view - no list, no filters, no fan-out. Lives in src/commands/detail.rs; signature
 # via scaffold::subcommand_signature; the positional delegates to the owning
 # resource's completer (container::complete_names, image::complete_refs).
 object_detail:
-  - name: container diff           # ✅ implemented & verified (parity vs `docker diff`)
-    source_fn: container_changes   # Option<Vec<FilesystemChange>>
+  - name: container diff # ✅ implemented & verified (parity vs `docker diff`)
+    source_fn: container_changes # Option<Vec<FilesystemChange>>
     compact_notes: >
       rows of {path, kind}. `kind` is a ChangeType #[repr(i32)] enum (0/1/2) with no
       string form → mapped BY HAND to modified/added/deleted (NOT enum_opt, which
       needs a string serialization). None (no changes) → empty list. full = raw
       (kind as 0/1/2). Works on any container.
-  - name: container top            # ✅ implemented & verified (parity vs `docker top`)
-    source_fn: top_processes       # ContainerTopResponse {titles, processes}
+  - name: container top # ✅ implemented & verified (parity vs `docker top`)
+    source_fn: top_processes # ContainerTopResponse {titles, processes}
     compact_notes: >
       one row per process, columns = the lowercased ps titles (uid/pid/…/cmd); cells
       kept as strings (ps output is text). full = raw {titles, processes}. Requires a
       RUNNING container (errors otherwise, like docker).
-  - name: image history            # ✅ implemented & verified (parity vs `docker history`)
-    source_fn: image_history       # Vec<ImageHistoryResponseItem>
+  - name: image history # ✅ implemented & verified (parity vs `docker history`)
+    source_fn: image_history # Vec<ImageHistoryResponseItem>
     compact_notes: >
       compact mirrors `docker history`: id (strip sha256: + short; `<missing>`→nothing),
       created (epoch→date), created_by, size (→filesize), comment. wide adds tags(list).
@@ -161,57 +176,57 @@ object_detail:
 
 # --- local but niche: managed Docker plugins. Most daemons have none. ----------
 local_niche:
-  - name: plugin                  # ✅ implemented
-    list_fn: list_plugins         # Vec<Plugin>
-    inspect_fn: inspect_plugin    # Plugin — the SAME struct as the list element (verified)
-    same_type: true               # ⇒ NO inspect fan-out; wide projects more of the same Plugin
+  - name: plugin # ✅ implemented
+    list_fn: list_plugins # Vec<Plugin>
+    inspect_fn: inspect_plugin # Plugin - the SAME struct as the list element (verified)
+    same_type: true # ⇒ NO inspect fan-out; wide projects more of the same Plugin
     filters: [capability, enabled]
     #   capability → string {volumedriver,networkdriver,ipamdriver,authz,logdriver,metricscollector}
     #   enabled → SWITCH (sends enabled=true). The API key is `enabled`, NOT `enable`
-    #     (the daemon rejects `enable` with HTTP 400 — verified live). A switch, not a
+    #     (the daemon rejects `enable` with HTTP 400 - verified live). A switch, not a
     #     string, because nushell lexes a bare `true`/`false` as a bool literal, so a
     #     string flag rejects `--enabled true`. Disabled-only = `| where not enabled`.
-    labels: false                 # no label map → CommandSpec.show_labels: false (no --show-labels)
+    labels: false # no label map → CommandSpec.show_labels: false (no --show-labels)
     compact_notes: >
       compact: name, id(short), enabled(bool), reference(plugin_reference),
       description(config.description). wide adds documentation, capabilities
       (config.interface.types→str_list), socket, entrypoint, work_dir, and the
       ACTIVE settings env/args(str_list). full = raw Plugin. No decorators param
-      (no labels). CAVEAT: rich output UNVERIFIED — this daemon has 0 plugins;
+      (no labels). CAVEAT: rich output UNVERIFIED - this daemon has 0 plugins;
       verified only empty-list parity, filter-key acceptance, and flag surface.
 
 # --- swarm: fit the pattern, but the list endpoints 503 unless the daemon is a
 #     swarm manager (`docker swarm init`). Defer until we target swarm.
-#     same_type values here are UNVERIFIED guesses — check the real return type. -
+#     same_type values here are UNVERIFIED guesses - check the real return type. -
 swarm:
   - name: service
     list_fn: list_services
     inspect_fn: inspect_service
-    same_type: true               # UNVERIFIED
-    filters: [id, name, label, mode]   # mode → {replicated,global}
+    same_type: true # UNVERIFIED
+    filters: [id, name, label, mode] # mode → {replicated,global}
     labels: true
   - name: node
     list_fn: list_nodes
     inspect_fn: inspect_node
-    same_type: true               # UNVERIFIED
-    filters: [id, label, membership, name, role]  # role → {manager,worker}
+    same_type: true # UNVERIFIED
+    filters: [id, label, membership, name, role] # role → {manager,worker}
     labels: true
   - name: task
     list_fn: list_tasks
     inspect_fn: inspect_task
-    same_type: true               # UNVERIFIED
+    same_type: true # UNVERIFIED
     filters: [desired-state, id, label, name, node, service]
     labels: true
   - name: config
     list_fn: list_configs
     inspect_fn: inspect_config
-    same_type: true               # UNVERIFIED
+    same_type: true # UNVERIFIED
     filters: [id, label, name]
     labels: true
   - name: secret
     list_fn: list_secrets
     inspect_fn: inspect_secret
-    same_type: true               # UNVERIFIED
+    same_type: true # UNVERIFIED
     filters: [id, label, name]
     labels: true
 
@@ -221,6 +236,6 @@ excluded:
     reason: inspect_exec only, no list; execs are ephemeral, not browsable.
   - name: swarm
     reason: inspect_swarm is a singleton (cluster config), no list. A possible
-            future `nude swarm` info command, but not this pattern.
+      future `nude swarm` info command, but not this pattern.
   - name: checkpoint
     reason: list_checkpoints only, per-container, experimental, no inspect.

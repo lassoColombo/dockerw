@@ -1,19 +1,10 @@
-//! `nude container ls` / `nude container inspect` — list containers, or inspect
-//! one by name/ID.
-//!
-//! Data source per output format:
-//! - compact : `list_containers` summaries
-//! - wide    : `inspect_container` (fanned out over the list, for `ls -o wide`)
-//! - full    : `inspect_container`, converted verbatim via `IntoValue`
-//!
-//! `inspect` always goes through `inspect_container` (exact, one call); `ls -o
-//! wide|full` fans it out over the list.
-
 use bollard::models::{ContainerInspectResponse, ContainerSummary};
 use bollard::query_parameters::ListContainersOptionsBuilder;
 use futures::future::join_all;
 use nu_plugin::{DynamicCompletionCall, EngineInterface, EvaluatedCall, SimplePluginCommand};
-use nu_protocol::{DynamicSuggestion, LabeledError, Record, Signature, Span, Value, engine::ArgType};
+use nu_protocol::{
+    engine::ArgType, DynamicSuggestion, LabeledError, Record, Signature, Span, Value,
+};
 
 use crate::completers;
 use crate::decorators::Decorators;
@@ -31,21 +22,31 @@ pub struct ContainerInspectCommand;
 const LS: &str = "nude container ls";
 const INSPECT: &str = "nude container inspect";
 
-/// Docker `/containers/json` filters — the single source of truth for both the
-/// signature and the request builder.
 const FILTERS: &[FilterArg] = &[
-    FilterArg::string("status", "State: created|restarting|running|removing|paused|exited|dead"),
+    FilterArg::string(
+        "status",
+        "State: created|restarting|running|removing|paused|exited|dead",
+    ),
     FilterArg::string("health", "Health: starting|healthy|unhealthy|none"),
     FilterArg::int("exited", "Exit code (matches stopped containers)"),
-    FilterArg::string("ancestor", "Created from this image (name[:tag], id, or digest)"),
+    FilterArg::string(
+        "ancestor",
+        "Created from this image (name[:tag], id, or digest)",
+    ),
     FilterArg::string("before", "Created before this container (name or id)"),
     FilterArg::string("since", "Created since this container (name or id)"),
     FilterArg::string("name", "Name substring (use `inspect` for an exact lookup)"),
     FilterArg::string("id", "Container id prefix"),
     FilterArg::string("network", "Attached to this network (name or id)"),
     FilterArg::string("volume", "Uses this volume (name or mount destination)"),
-    FilterArg::string("publish", "Publishes this port (`port[/proto]` or `start-end[/proto]`)"),
-    FilterArg::string("expose", "Exposes this port (`port[/proto]` or `start-end[/proto]`)"),
+    FilterArg::string(
+        "publish",
+        "Publishes this port (`port[/proto]` or `start-end[/proto]`)",
+    ),
+    FilterArg::string(
+        "expose",
+        "Exposes this port (`port[/proto]` or `start-end[/proto]`)",
+    ),
     FilterArg::labels(),
     FilterArg::switch("is-task", "Only swarm service tasks"),
 ];
@@ -81,17 +82,10 @@ impl SimplePluginCommand for ContainerLsCommand {
         plugin.block_on_labeled(run_list(plugin, call))
     }
 
-    /// Dynamic argument completions for the filter flags.
-    ///
-    /// Nushell filters whatever we return against the text already typed (its
-    /// `NuMatcher`) and picks the replacement span, so we hand back the full
-    /// candidate set and leave each suggestion's `span`/match state unset.
-    /// Returning `None` means "no idea, use your defaults"; `Some(vec![])` means
-    /// "there are genuinely no candidates".
-    ///
-    /// This is the completion template the other resource `ls` commands follow.
-    /// The API is still experimental in nu-plugin, hence the `ExperimentalMarker`.
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         plugin: &Self::Plugin,
@@ -115,9 +109,10 @@ impl SimplePluginCommand for ContainerLsCommand {
                 "volume" => crate::commands::volume::complete_names(plugin),
                 "labels" => completers::complete_labels(
                     &call,
-                    all_containers(plugin)?.iter().filter_map(|c| c.labels.as_ref()),
+                    all_containers(plugin)?
+                        .iter()
+                        .filter_map(|c| c.labels.as_ref()),
                 ),
-                // exited/publish/expose/is-task have no useful completion.
                 _ => None,
             },
             _ => None,
@@ -150,8 +145,10 @@ impl SimplePluginCommand for ContainerInspectCommand {
         plugin.block_on_labeled(run_inspect(plugin, call))
     }
 
-    /// The container-ref positional + `-o` — the shared inspect/detail shape.
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         plugin: &Self::Plugin,
@@ -164,7 +161,6 @@ impl SimplePluginCommand for ContainerInspectCommand {
     }
 }
 
-/// `--status` filter values (Docker container states).
 const STATUS: &[(&str, &str)] = &[
     ("created", "Created but not started"),
     ("restarting", "Restarting"),
@@ -172,10 +168,9 @@ const STATUS: &[(&str, &str)] = &[
     ("removing", "Being removed"),
     ("paused", "Paused"),
     ("exited", "Stopped after running"),
-    ("dead", "Dead — the daemon could not remove it"),
+    ("dead", "Dead - the daemon could not remove it"),
 ];
 
-/// `--health` filter values.
 const HEALTH: &[(&str, &str)] = &[
     ("starting", "Healthcheck grace period"),
     ("healthy", "Passing its healthcheck"),
@@ -183,17 +178,12 @@ const HEALTH: &[(&str, &str)] = &[
     ("none", "No healthcheck configured"),
 ];
 
-/// Every container (running and stopped), or `None` if the daemon is
-/// unreachable. The shared source for the name/id/label-key completers.
 fn all_containers(plugin: &NudePlugin) -> Option<Vec<ContainerSummary>> {
     let docker = plugin.docker().ok()?;
     let opts = ListContainersOptionsBuilder::default().all(true).build();
     plugin.rt.block_on(docker.list_containers(Some(opts))).ok()
 }
 
-/// Container names as candidates, described by their status line (`Up 2 hours`).
-/// Feeds the positional and the `--name`/`--before`/`--since` filters, and (via
-/// `pub(crate)`) the `container diff`/`top` sub-verbs in `detail.rs`.
 pub(crate) fn complete_names(plugin: &NudePlugin) -> Option<Vec<DynamicSuggestion>> {
     Some(
         all_containers(plugin)?
@@ -209,7 +199,6 @@ pub(crate) fn complete_names(plugin: &NudePlugin) -> Option<Vec<DynamicSuggestio
     )
 }
 
-/// Container ids as candidates, described by their name. Feeds `--id`.
 fn complete_ids(plugin: &NudePlugin) -> Option<Vec<DynamicSuggestion>> {
     Some(
         all_containers(plugin)?
@@ -246,11 +235,9 @@ async fn run_list(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<V
                 .collect(),
             span,
         )),
-        // wide/full come from inspect → fan out concurrently.
         _ => {
             let ids: Vec<String> = summaries.into_iter().filter_map(|c| c.id).collect();
-            let inspected =
-                join_all(ids.iter().map(|id| docker.inspect_container(id, None))).await;
+            let inspected = join_all(ids.iter().map(|id| docker.inspect_container(id, None))).await;
             let rows: Vec<Value> = inspected
                 .into_iter()
                 .filter_map(Result::ok)
@@ -264,8 +251,6 @@ async fn run_list(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<V
     }
 }
 
-/// Inspect one container by exact name/ID (one call). Shown wide; `-o full`
-/// returns the raw inspect payload.
 async fn run_inspect(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<Value> {
     let name: String = call.req(0)?;
     let decorators = Decorators::from_call(call)?;
@@ -279,17 +264,13 @@ async fn run_inspect(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Resul
     })
 }
 
-// ---------------------------------------------------------------------------
-// Compact (from a list summary)
-// ---------------------------------------------------------------------------
-
 fn compact(c: &ContainerSummary, span: Span, decorators: Decorators) -> Value {
-    // The list endpoint only reports the human `status` line (e.g.
-    // `Exited (0) 2 hours ago`), so we split its typed parts out here; the
-    // precise timing lives in wide's `started`/`finished` dates.
     let status = c.status.as_deref();
     let mut rec = Record::new();
-    rec.push("name", str_opt(clean_name(c.names.as_ref()).as_deref(), span));
+    rec.push(
+        "name",
+        str_opt(clean_name(c.names.as_ref()).as_deref(), span),
+    );
     rec.push("image", str_opt(c.image.as_deref(), span));
     rec.push("state", enum_opt(c.state.as_ref(), span));
     rec.push("health", str_opt(status_health(status), span));
@@ -299,8 +280,6 @@ fn compact(c: &ContainerSummary, span: Span, decorators: Decorators) -> Value {
     Value::record(rec, span)
 }
 
-/// Health embedded in a summary status line (`Up … (healthy)`), if present.
-/// Uses the same vocabulary as inspect's `state.health.status`.
 fn status_health(status: Option<&str>) -> Option<&'static str> {
     let s = status?;
     if s.contains("(healthy)") {
@@ -314,8 +293,6 @@ fn status_health(status: Option<&str>) -> Option<&'static str> {
     }
 }
 
-/// Exit code embedded in a summary status line (`Exited (0) …`,
-/// `Restarting (1) …`), if present.
 fn status_exit_code(status: Option<&str>) -> Option<i64> {
     let s = status?;
     let rest = s
@@ -324,10 +301,6 @@ fn status_exit_code(status: Option<&str>) -> Option<i64> {
     let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
     digits.parse().ok()
 }
-
-// ---------------------------------------------------------------------------
-// Wide (from an inspect response)
-// ---------------------------------------------------------------------------
 
 fn wide(r: &ContainerInspectResponse, span: Span, decorators: Decorators) -> Value {
     let config = r.config.as_ref();
@@ -338,9 +311,18 @@ fn wide(r: &ContainerInspectResponse, span: Span, decorators: Decorators) -> Val
         "name",
         str_opt(r.name.as_deref().map(|n| n.trim_start_matches('/')), span),
     );
-    rec.push("id", str_opt(r.id.as_deref().map(short_id).as_deref(), span));
-    rec.push("image", str_opt(config.and_then(|c| c.image.as_deref()), span));
-    rec.push("state", enum_opt(state.and_then(|s| s.status.as_ref()), span));
+    rec.push(
+        "id",
+        str_opt(r.id.as_deref().map(short_id).as_deref(), span),
+    );
+    rec.push(
+        "image",
+        str_opt(config.and_then(|c| c.image.as_deref()), span),
+    );
+    rec.push(
+        "state",
+        enum_opt(state.and_then(|s| s.status.as_ref()), span),
+    );
     rec.push(
         "health",
         enum_opt(
@@ -350,17 +332,20 @@ fn wide(r: &ContainerInspectResponse, span: Span, decorators: Decorators) -> Val
             span,
         ),
     );
-    // Exit code is meaningless while the container is running; report it only
-    // once it has stopped, matching compact's parsed `exit_code`.
     let running = state.and_then(|s| s.running).unwrap_or(false);
     rec.push(
         "exit_code",
         opt_int(
-            (!running).then(|| state.and_then(|s| s.exit_code)).flatten(),
+            (!running)
+                .then(|| state.and_then(|s| s.exit_code))
+                .flatten(),
             span,
         ),
     );
-    rec.push("command", str_list(config.and_then(|c| c.cmd.as_ref()), span));
+    rec.push(
+        "command",
+        str_list(config.and_then(|c| c.cmd.as_ref()), span),
+    );
     rec.push("created", opt_rfc3339(r.created.as_deref(), span));
     rec.push(
         "started",
@@ -379,10 +364,6 @@ fn wide(r: &ContainerInspectResponse, span: Span, decorators: Decorators) -> Val
     Value::record(rec, span)
 }
 
-// ---------------------------------------------------------------------------
-// Wide sub-builders
-// ---------------------------------------------------------------------------
-
 fn port_int(s: &str, span: Span) -> Value {
     match s.parse::<i64>() {
         Ok(n) => Value::int(n, span),
@@ -390,8 +371,6 @@ fn port_int(s: &str, span: Span) -> Value {
     }
 }
 
-/// `network_settings.ports` (`{"6379/tcp": [{HostIp, HostPort}]}`) → list of
-/// `{container_port, proto, host_ip, host_port}` records.
 fn ports_value(r: &ContainerInspectResponse, span: Span) -> Value {
     let Some(ports) = r.network_settings.as_ref().and_then(|ns| ns.ports.as_ref()) else {
         return Value::list(vec![], span);
@@ -417,7 +396,6 @@ fn ports_value(r: &ContainerInspectResponse, span: Span) -> Value {
                 }
             }
             _ => {
-                // Exposed but not published to the host.
                 let mut rec = Record::new();
                 rec.push("container_port", port_int(port, span));
                 rec.push("proto", Value::string(proto, span));
@@ -430,7 +408,6 @@ fn ports_value(r: &ContainerInspectResponse, span: Span) -> Value {
     Value::list(rows, span)
 }
 
-/// First non-empty container IP across attached networks.
 fn ip_value(r: &ContainerInspectResponse, span: Span) -> Value {
     let ip = r
         .network_settings
@@ -444,18 +421,20 @@ fn ip_value(r: &ContainerInspectResponse, span: Span) -> Value {
     str_opt(ip, span)
 }
 
-/// Attached network names.
 fn networks_value(r: &ContainerInspectResponse, span: Span) -> Value {
     let names = r
         .network_settings
         .as_ref()
         .and_then(|ns| ns.networks.as_ref())
-        .map(|nets| nets.keys().map(|k| Value::string(k, span)).collect::<Vec<_>>())
+        .map(|nets| {
+            nets.keys()
+                .map(|k| Value::string(k, span))
+                .collect::<Vec<_>>()
+        })
         .unwrap_or_default();
     Value::list(names, span)
 }
 
-/// Mounts → list of `{type, source, destination, mode, rw}` records.
 fn mounts_value(r: &ContainerInspectResponse, span: Span) -> Value {
     let Some(mounts) = r.mounts.as_ref() else {
         return Value::list(vec![], span);
@@ -481,8 +460,14 @@ mod tests {
 
     #[test]
     fn health_is_parsed_from_the_status_line() {
-        assert_eq!(status_health(Some("Up 12 hours (healthy)")), Some("healthy"));
-        assert_eq!(status_health(Some("Up 2 minutes (unhealthy)")), Some("unhealthy"));
+        assert_eq!(
+            status_health(Some("Up 12 hours (healthy)")),
+            Some("healthy")
+        );
+        assert_eq!(
+            status_health(Some("Up 2 minutes (unhealthy)")),
+            Some("unhealthy")
+        );
         assert_eq!(
             status_health(Some("Up Less than a second (health: starting)")),
             Some("starting")
@@ -496,7 +481,10 @@ mod tests {
     fn exit_code_is_parsed_from_the_status_line() {
         assert_eq!(status_exit_code(Some("Exited (0) 47 hours ago")), Some(0));
         assert_eq!(status_exit_code(Some("Exited (137) 3 days ago")), Some(137));
-        assert_eq!(status_exit_code(Some("Restarting (1) 5 seconds ago")), Some(1));
+        assert_eq!(
+            status_exit_code(Some("Restarting (1) 5 seconds ago")),
+            Some(1)
+        );
         assert_eq!(status_exit_code(Some("Up 12 hours (healthy)")), None);
         assert_eq!(status_exit_code(Some("Created")), None);
         assert_eq!(status_exit_code(None), None);

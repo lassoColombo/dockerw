@@ -1,23 +1,10 @@
-//! Per-object detail sub-verbs: `nude container diff`, `nude container top`,
-//! `nude image history`.
-//!
-//! A shape distinct from list+inspect: each takes a **required** object reference
-//! and returns one focused, typed view of that single object — no list, no
-//! inspect fan-out, no filters. Signature via [`scaffold::subcommand_signature`];
-//! the positional is completed by delegating to the owning resource's completer
-//! (`container::complete_names`, `image::complete_refs`).
-//!
-//! - `diff`    → `container_changes`: filesystem changes, rows of `{path, kind}`.
-//! - `top`     → `top_processes`: running processes, one row per process keyed by
-//!   the ps column titles. Requires a **running** container (errors otherwise).
-//! - `history` → `image_history`: layer history, rows of `{id, created,
-//!   created_by, size, comment}` (mirrors `docker history`; `tags` in wide).
-
 use bollard::models::{
     ChangeType, ContainerTopResponse, FilesystemChange, ImageHistoryResponseItem,
 };
 use nu_plugin::{DynamicCompletionCall, EngineInterface, EvaluatedCall, SimplePluginCommand};
-use nu_protocol::{DynamicSuggestion, LabeledError, Record, Signature, Span, Value, engine::ArgType};
+use nu_protocol::{
+    engine::ArgType, DynamicSuggestion, LabeledError, Record, Signature, Span, Value,
+};
 
 use crate::commands::{container, image};
 use crate::completers;
@@ -25,13 +12,6 @@ use crate::helpers::{epoch_date, full_value, short_id, str_list, str_opt};
 use crate::output::OutputFormat;
 use crate::plugin::NudePlugin;
 use crate::scaffold;
-
-// The object-ref positional + `-o` completion these sub-verbs share with every
-// `inspect` command lives in `completers::ref_and_output`.
-
-// ===========================================================================
-// container diff
-// ===========================================================================
 
 pub struct ContainerDiffCommand;
 
@@ -62,7 +42,10 @@ impl SimplePluginCommand for ContainerDiffCommand {
         plugin.block_on_labeled(run_diff(plugin, call))
     }
 
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         plugin: &Self::Plugin,
@@ -80,7 +63,11 @@ async fn run_diff(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<V
     let span = call.head;
     let fmt = scaffold::output_format(call, false)?;
     // `None` = no changes → an empty list, not an error.
-    let changes = plugin.docker()?.container_changes(&name).await?.unwrap_or_default();
+    let changes = plugin
+        .docker()?
+        .container_changes(&name)
+        .await?
+        .unwrap_or_default();
     let rows = changes
         .iter()
         .map(|c| match fmt {
@@ -98,8 +85,6 @@ fn diff_row(c: &FilesystemChange, span: Span) -> Value {
     Value::record(rec, span)
 }
 
-/// Docker's `ChangeType` is an `#[repr(i32)]` enum (0/1/2), so it has no string
-/// form — map it to a queryable label by hand.
 fn change_kind(kind: ChangeType, span: Span) -> Value {
     let s = match kind {
         ChangeType::_0 => "modified",
@@ -108,10 +93,6 @@ fn change_kind(kind: ChangeType, span: Span) -> Value {
     };
     Value::string(s, span)
 }
-
-// ===========================================================================
-// container top
-// ===========================================================================
 
 pub struct ContainerTopCommand;
 
@@ -142,7 +123,10 @@ impl SimplePluginCommand for ContainerTopCommand {
         plugin.block_on_labeled(run_top(plugin, call))
     }
 
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         plugin: &Self::Plugin,
@@ -166,8 +150,6 @@ async fn run_top(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<Va
     })
 }
 
-/// Zip each process row against the ps column titles into a typed record. Cells
-/// stay strings (ps output is text); the columns are the (lowercased) titles.
 fn top_table(top: &ContainerTopResponse, span: Span) -> Value {
     let titles: Vec<String> = top
         .titles
@@ -185,7 +167,10 @@ fn top_table(top: &ContainerTopResponse, span: Span) -> Value {
                 .map(|process| {
                     let mut rec = Record::new();
                     for (i, title) in titles.iter().enumerate() {
-                        rec.push(title.clone(), str_opt(process.get(i).map(String::as_str), span));
+                        rec.push(
+                            title.clone(),
+                            str_opt(process.get(i).map(String::as_str), span),
+                        );
                     }
                     Value::record(rec, span)
                 })
@@ -194,10 +179,6 @@ fn top_table(top: &ContainerTopResponse, span: Span) -> Value {
         .unwrap_or_default();
     Value::list(rows, span)
 }
-
-// ===========================================================================
-// image history
-// ===========================================================================
 
 pub struct ImageHistoryCommand;
 
@@ -228,7 +209,10 @@ impl SimplePluginCommand for ImageHistoryCommand {
         plugin.block_on_labeled(run_history(plugin, call))
     }
 
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         plugin: &Self::Plugin,
@@ -257,8 +241,6 @@ async fn run_history(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Resul
     Ok(Value::list(rows, span))
 }
 
-/// One layer. compact mirrors `docker history`; wide adds the (usually empty)
-/// `tags` list.
 fn history_row(h: &ImageHistoryResponseItem, span: Span, wide: bool) -> Value {
     let mut rec = Record::new();
     rec.push("id", history_id(&h.id, span));
@@ -272,9 +254,6 @@ fn history_row(h: &ImageHistoryResponseItem, span: Span, wide: bool) -> Value {
     Value::record(rec, span)
 }
 
-/// A history layer id: strip the `sha256:` prefix and shorten. Docker's
-/// `<missing>` placeholder (an intermediate layer with no standalone image) and
-/// the empty string both map to `nothing`.
 fn history_id(id: &str, span: Span) -> Value {
     let id = id.strip_prefix("sha256:").unwrap_or(id);
     if id.is_empty() || id == "<missing>" {

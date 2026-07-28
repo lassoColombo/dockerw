@@ -1,23 +1,11 @@
-//! `nude volume ls` / `nude volume inspect` — list volumes, or inspect one by
-//! name.
-//!
-//! Volumes are the first resource where `list_volumes` and `inspect_volume`
-//! return the **same** `Volume` struct, so there is no richer inspect payload to
-//! fetch: wide simply projects more columns of the summary and needs **no**
-//! inspect fan-out. Data source per output format:
-//! - compact : `list_volumes` (`Volume`)
-//! - wide    : the same `Volume`, with mountpoint / options / usage columns
-//! - full    : the `Volume`, converted verbatim via `IntoValue`
-//!
-//! `inspect` goes through `inspect_volume` (exact, one call); volumes are keyed
-//! by name, so there is no id filter.
-
 use std::collections::BTreeSet;
 
 use bollard::models::Volume;
 use bollard::query_parameters::ListVolumesOptionsBuilder;
 use nu_plugin::{DynamicCompletionCall, EngineInterface, EvaluatedCall, SimplePluginCommand};
-use nu_protocol::{DynamicSuggestion, LabeledError, Record, Signature, Span, Value, engine::ArgType};
+use nu_protocol::{
+    engine::ArgType, DynamicSuggestion, LabeledError, Record, Signature, Span, Value,
+};
 
 use crate::completers;
 use crate::decorators::Decorators;
@@ -32,8 +20,6 @@ pub struct VolumeInspectCommand;
 const LS: &str = "nude volume ls";
 const INSPECT: &str = "nude volume inspect";
 
-/// Docker `/volumes` filters — the single source of truth for both the
-/// signature and the request builder.
 const FILTERS: &[FilterArg] = &[
     FilterArg::string("driver", "Volume driver (e.g. `local`, or a volume plugin)"),
     FilterArg::string("name", "Name substring (use `inspect` for an exact lookup)"),
@@ -72,10 +58,10 @@ impl SimplePluginCommand for VolumeLsCommand {
         plugin.block_on_labeled(run_list(plugin, call))
     }
 
-    /// Dynamic argument completions for the filter flags. Same contract as
-    /// `container.rs`: hand back the full candidate set and let Nushell's
-    /// `NuMatcher` filter it.
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         plugin: &Self::Plugin,
@@ -87,14 +73,12 @@ impl SimplePluginCommand for VolumeLsCommand {
         match arg_type {
             ArgType::Flag(name) => match name.as_ref() {
                 "output" | "o" => Some(completers::from_pairs(OutputFormat::ALL)),
-                // Drivers are pluggable, so there's no closed set — offer the
-                // ones actually in use.
                 "driver" => complete_drivers(plugin),
                 "name" => complete_names(plugin),
-                "labels" => {
-                    completers::complete_labels(&call, all_volumes(plugin)?.iter().map(|v| &v.labels))
-                }
-                // dangling has no useful completion.
+                "labels" => completers::complete_labels(
+                    &call,
+                    all_volumes(plugin)?.iter().map(|v| &v.labels),
+                ),
                 _ => None,
             },
             _ => None,
@@ -127,8 +111,10 @@ impl SimplePluginCommand for VolumeInspectCommand {
         plugin.block_on_labeled(run_inspect(plugin, call))
     }
 
-    /// The volume-name positional + `-o` — the shared inspect/detail shape.
-    #[allow(deprecated, reason = "ExperimentalMarker gates an experimental API we opt into")]
+    #[allow(
+        deprecated,
+        reason = "ExperimentalMarker gates an experimental API we opt into"
+    )]
     fn get_dynamic_completion(
         &self,
         plugin: &Self::Plugin,
@@ -141,8 +127,6 @@ impl SimplePluginCommand for VolumeInspectCommand {
     }
 }
 
-/// Every volume, or `None` if the daemon is unreachable. The shared source for
-/// the name/driver/label-key completers.
 fn all_volumes(plugin: &NudePlugin) -> Option<Vec<Volume>> {
     let docker = plugin.docker().ok()?;
     let opts = ListVolumesOptionsBuilder::default().build();
@@ -150,8 +134,6 @@ fn all_volumes(plugin: &NudePlugin) -> Option<Vec<Volume>> {
     Some(resp.volumes.unwrap_or_default())
 }
 
-/// Volume names as candidates, described by their driver. Feeds the positional
-/// and the `--name` filter.
 pub(crate) fn complete_names(plugin: &NudePlugin) -> Option<Vec<DynamicSuggestion>> {
     Some(
         all_volumes(plugin)?
@@ -165,7 +147,6 @@ pub(crate) fn complete_names(plugin: &NudePlugin) -> Option<Vec<DynamicSuggestio
     )
 }
 
-/// The distinct drivers actually in use. Feeds `--driver`.
 fn complete_drivers(plugin: &NudePlugin) -> Option<Vec<DynamicSuggestion>> {
     let drivers: BTreeSet<String> = all_volumes(plugin)?.into_iter().map(|v| v.driver).collect();
     Some(
@@ -184,10 +165,10 @@ async fn run_list(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<V
     let span = call.head;
     let fmt = scaffold::output_format(call, false)?;
 
-    // Every format is built from the same `Volume` — no inspect fan-out, unlike
-    // containers/networks/images.
     let filters = scaffold::collect_filters(call, FILTERS)?;
-    let opts = ListVolumesOptionsBuilder::default().filters(&filters).build();
+    let opts = ListVolumesOptionsBuilder::default()
+        .filters(&filters)
+        .build();
     let volumes = plugin
         .docker()?
         .list_volumes(Some(opts))
@@ -205,8 +186,6 @@ async fn run_list(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<V
     Ok(Value::list(rows, span))
 }
 
-/// Inspect one volume by exact name (one call). `inspect_volume` returns the
-/// same `Volume` a list row would, so wide/full render it directly.
 async fn run_inspect(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Result<Value> {
     let name: String = call.req(0)?;
     let decorators = Decorators::from_call(call)?;
@@ -220,10 +199,6 @@ async fn run_inspect(plugin: &NudePlugin, call: &EvaluatedCall) -> anyhow::Resul
     })
 }
 
-// ---------------------------------------------------------------------------
-// Compact
-// ---------------------------------------------------------------------------
-
 fn compact(v: &Volume, span: Span, decorators: Decorators) -> Value {
     let mut rec = Record::new();
     rec.push("name", str_opt(Some(v.name.as_str()), span));
@@ -234,10 +209,6 @@ fn compact(v: &Volume, span: Span, decorators: Decorators) -> Value {
     Value::record(rec, span)
 }
 
-// ---------------------------------------------------------------------------
-// Wide (same struct, more columns)
-// ---------------------------------------------------------------------------
-
 fn wide(v: &Volume, span: Span, decorators: Decorators) -> Value {
     let mut rec = Record::new();
     rec.push("name", str_opt(Some(v.name.as_str()), span));
@@ -246,8 +217,6 @@ fn wide(v: &Volume, span: Span, decorators: Decorators) -> Value {
     rec.push("mountpoint", str_opt(Some(v.mountpoint.as_str()), span));
     rec.push("created", opt_rfc3339(v.created_at.as_deref(), span));
     rec.push("options", str_map(Some(&v.options), span));
-    // Usage is only present when the daemon computed it (e.g. `docker system
-    // df`); otherwise nothing, rather than a misleading zero.
     rec.push(
         "size",
         opt_filesize(v.usage_data.as_ref().map(|u| u.size), span),

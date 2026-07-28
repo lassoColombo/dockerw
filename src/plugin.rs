@@ -4,12 +4,15 @@ use nu_protocol::{LabeledError, Value};
 use std::sync::Mutex;
 use tokio::runtime::Runtime;
 
+use crate::commands::aliases::{
+    DiffCommand, HistoryCommand, ImagesCommand, InfoCommand, PsCommand, TopCommand,
+};
 use crate::commands::container::{ContainerInspectCommand, ContainerLsCommand};
 use crate::commands::detail::{ContainerDiffCommand, ContainerTopCommand, ImageHistoryCommand};
 use crate::commands::image::{ImageInspectCommand, ImageLsCommand};
 use crate::commands::network::{NetworkInspectCommand, NetworkLsCommand};
 use crate::commands::plugin::{PluginInspectCommand, PluginLsCommand};
-use crate::commands::system::{SystemInfoCommand, SystemVersionCommand};
+use crate::commands::system::{SystemInfoCommand, VersionCommand};
 use crate::commands::volume::{VolumeInspectCommand, VolumeLsCommand};
 
 pub struct NudePlugin {
@@ -25,12 +28,6 @@ impl NudePlugin {
         }
     }
 
-    /// Connect to the local Docker daemon, memoizing the handle for reuse.
-    ///
-    /// `Docker` is cheap to clone (it wraps an `Arc` internally), so each caller
-    /// gets its own handle. `connect_with_local_defaults` selects the unix
-    /// socket (or the Windows named pipe) and is lazy — it does not reach the
-    /// daemon until the first request is made.
     pub fn docker(&self) -> anyhow::Result<Docker> {
         let mut guard = self.docker.lock().unwrap();
         if let Some(d) = guard.as_ref() {
@@ -41,9 +38,6 @@ impl NudePlugin {
         Ok(d)
     }
 
-    /// Run a command's async body to completion on the runtime, mapping its
-    /// `anyhow` error into the `LabeledError` the plugin trait expects. Every
-    /// command's `run` is one call to this.
     pub fn block_on_labeled(
         &self,
         fut: impl std::future::Future<Output = anyhow::Result<Value>>,
@@ -73,7 +67,7 @@ impl Plugin for NudePlugin {
             Box::new(ContainerTopCommand),
             Box::new(ImageLsCommand),
             Box::new(ImageInspectCommand),
-            Box::new(crate::commands::search::ImageSearchCommand),
+            Box::new(crate::commands::search::SearchCommand),
             Box::new(ImageHistoryCommand),
             Box::new(NetworkLsCommand),
             Box::new(NetworkInspectCommand),
@@ -82,7 +76,14 @@ impl Plugin for NudePlugin {
             Box::new(PluginLsCommand),
             Box::new(PluginInspectCommand),
             Box::new(SystemInfoCommand),
-            Box::new(SystemVersionCommand),
+            Box::new(VersionCommand),
+            // aliases (docker's short forms)
+            Box::new(PsCommand),
+            Box::new(ImagesCommand),
+            Box::new(TopCommand),
+            Box::new(DiffCommand),
+            Box::new(HistoryCommand),
+            Box::new(InfoCommand),
         ]
     }
 }
